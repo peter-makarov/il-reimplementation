@@ -538,7 +538,7 @@ class Transducer(object):
         return 0.5 * dy.esum(reg)
 
     def transduce(self, lemma, feats, oracle_actions=None, external_cg=True, sampling=False,
-                  unk_avg=True, verbose=False):
+                  unk_avg=True, verbose=False, channel=False):
         """
         Transduce an encoded lemma and features.
         Args:
@@ -564,6 +564,7 @@ class Transducer(object):
                      for a dynamic oracle.
             unk_avg: Whether or not to average all char embeddings to produce UNK embedding
                      (see `self._build_lemma`).
+            channel: Used as channel model.
             verbose: Whether or not to report on processing steps.
         """
         # Returns an expression of the loss for the sequence of actions.
@@ -597,7 +598,7 @@ class Transducer(object):
                 oracle_actions.pop()  # COPY of BEGIN_WORD_CHAR
 
         # vectorize lemma
-        lemma_enc = self._build_lemma(lemma, unk_avg, is_training=bool(oracle_actions))
+        lemma_enc = self._build_lemma(lemma, unk_avg, is_training=(bool(oracle_actions) and not channel))
 
         # vectorize features
         features = self._build_features(*feats)
