@@ -43,14 +43,14 @@ class Aligner:
 
     def __init__(self, wordpairs, align_symbol = u' ', iterations = 150, burnin = 5, lag = 1, mode = 'crp'):
         s = set(u''.join((x[0] + x[1] for x in wordpairs)))
-        self.symboltoint = dict(zip(s, xrange(1,len(s)+1)))
+        self.symboltoint = dict(zip(s, range(1,len(s)+1)))
         self.inttosymbol = {v:k for k, v in self.symboltoint.items()}
         self.inttosymbol[0] = align_symbol
         ## Map stringpairs to -1 terminated integer sequences ##
         intpairs = []
         for i, o in wordpairs:
-            intin = map(lambda x: self.symboltoint[x], i) + [-1]
-            intout = map(lambda x: self.symboltoint[x], o) + [-1]
+            intin = list(map(lambda x: self.symboltoint[x], i)) + [-1]
+            intout = list(map(lambda x: self.symboltoint[x], o)) + [-1]
             intpairs.append((intin, intout))
 
         libalign_align_init()

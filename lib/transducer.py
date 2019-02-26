@@ -943,9 +943,11 @@ class Transducer(object):
                 logits = W_act * h + b_act
                 log_probs_expr = dy.log_softmax(logits, valid_actions)
                 log_probs = log_probs_expr.npvalue()
-                top_actions = np.argsort(log_probs)[-beam_width:]
-                #print 'top_actions: ', top_actions, action2string(top_actions, self.vocab) 
-                #print 'log_probs: ', log_probs
+                # python3: conversion from np.int64 to int !!!
+                top_actions = [int(a) for a in np.argsort(log_probs)[-beam_width:]]
+                #print('top_actions: ', top_actions, type(top_actions), type(top_actions[0]),
+                #      action2string(top_actions, self.vocab))
+                #print('log_probs: ', log_probs)
                 #print
                 expansion.extend((
                     (decoder, encoder.copy(),

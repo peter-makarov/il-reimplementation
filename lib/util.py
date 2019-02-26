@@ -15,7 +15,7 @@ def write_stats_file(dev_accuracy, paths, data_arguments, model_arguments, optim
         print('Test path:    {}'.format(paths['test_path']), file=w)
         print('Results path: {}'.format(paths['results_file_path']), file=w)
 
-        for k, v in paths.iteritems():
+        for k, v in paths.items():
             if k not in ('lang', 'regime', 'train_path', 'dev_path',
                          'test_path', 'results_file_path'):
                 print('{:20} = {}'.format(k, v), file=w)
@@ -25,7 +25,7 @@ def write_stats_file(dev_accuracy, paths, data_arguments, model_arguments, optim
                            ('MODEL ARGS:', model_arguments),
                            ('OPTIMIZATION ARGS:', optim_arguments)):
             print(name, file=w)
-            for k, v in args.iteritems():
+            for k, v in args.items():
                 print('{:20} = {}'.format(k, v), file=w)
             print(file=w)
 
