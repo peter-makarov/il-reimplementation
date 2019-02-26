@@ -1,4 +1,5 @@
 #-*- coding: utf-8 -*-
+from __future__ import print_function
 import align
 
 from defaults import ALIGN_SYMBOL
@@ -102,10 +103,10 @@ if __name__ == "__main__":
     for alignment, aligned_pairs, targets in (('DUMB NO MULTI', dumb_align(pairs, multiword=False), dumb_targets_nomulti),
                                               ('DUMB MULTI', dumb_align(pairs, multiword=True), dumb_targets),
                                               ('CLS', cls_align(pairs), cls_targets)):
-        print 'Alignment: {}'.format(alignment)
-        print u'Pairs:         {}'.format(seq_of_pairs_unicode(pairs))
-        print u'Aligned pairs: {}'.format(seq_of_pairs_unicode(aligned_pairs))
-        print u'Targets:       {}'.format(seq_of_pairs_unicode(targets))
+        print('Alignment: {}'.format(alignment))
+        print(u'Pairs:         {}'.format(seq_of_pairs_unicode(pairs)))
+        print(u'Aligned pairs: {}'.format(seq_of_pairs_unicode(aligned_pairs)))
+        print(u'Targets:       {}'.format(seq_of_pairs_unicode(targets)))
         for a, t in zip(aligned_pairs, targets):
             assert a == t, u'Mismatch: {} and {}'.format(a, t)
-        print 'All matches.'
+        print('All matches.')

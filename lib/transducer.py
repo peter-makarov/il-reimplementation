@@ -1,4 +1,5 @@
 from __future__ import division
+from __future__ import print_function
 
 from collections import Counter
 
@@ -31,11 +32,11 @@ def log_sum_softmax_margin_loss(indices, logits, logits_len, costs=None, valid_a
         try:
             costs = - np.ones(logits_len) * np.inf
             costs[valid_actions] = 0.
-        except Exception, e:
-            print "np.ones_like(logits), valid_actions, costs: ", np.ones_like(logits), valid_actions, costs
+        except Exception as e:
+            print("np.ones_like(logits), valid_actions, costs: ", np.ones_like(logits), valid_actions, costs)
             raise e
     if costs is not None:
-        if verbose == 2: print 'Indices, costs: ', indices, costs
+        if verbose == 2: print('Indices, costs: ', indices, costs)
         logits += dy.inputVector(costs)
     log_sum_selected_terms = dy.logsumexp([dy.pick(logits, index=e) for e in indices])
     normalization_term = dy.logsumexp([l for l in logits])
@@ -51,7 +52,7 @@ def log_sum_softmax_loss(indices, logits, logits_len, valid_actions=None, verbos
         # build cost vector expressing action invalidity
         costs = - np.ones(logits_len) * np.inf
         costs[valid_actions] = 0.
-        if verbose == 2: print 'Indices, costs: ', indices, costs
+        if verbose == 2: print('Indices, costs: ', indices, costs)
         # add it to logits
         logits += dy.inputVector(costs)
     log_sum_selected_terms = dy.logsumexp([dy.pick(logits, index=e) for e in indices])
@@ -88,7 +89,7 @@ def sample(log_probs_np, alpha=1.):
 
 def cost_actions(actions, del_cost=1, ins_cost=1, copy_cost=0):
     return sum(0 if a == COPY else count * del_cost if a == DELETE else count * ins_cost
-               for a, count in Counter(actions).iteritems()) 
+               for a, count in Counter(actions).items())
 
 def edit_cost_matrix(source, target, del_cost=1, ins_cost=1, sub_cost=2, copy_cost=0):
     len_source_add1 = len(source) + 1
@@ -119,8 +120,8 @@ def oracle_with_rollout(word, target_word, rest_of_input, valid_actions,
 
     bias_inserts_on = bias_inserts and np.random.rand() > 0.5
     if verbose:
-        if rollout: print 'Rolling out with model...'
-        if bias_inserts_on: print 'Will use bias inserts.'
+        if rollout: print('Rolling out with model...')
+        if bias_inserts_on: print('Will use bias inserts.')
 
     len_target_word = len(target_word)
     rest_of_input = rest_of_input[:-1]  # discount END WORD! @TODO undo choice of word wrapping
@@ -131,10 +132,10 @@ def oracle_with_rollout(word, target_word, rest_of_input, valid_actions,
             # errors account for all possible errors except for last character
             num_errors = len(errors)
             if verbose:
-                print u'Word contains at least {} errors: {}, {}, {}'.format(num_errors,
+                print(u'Word contains at least {} errors: {}, {}, {}'.format(num_errors,
                     ''.join(word[:-1]) + '(' + word[-1] + ')',
                     ''.join([c for i, c in enumerate(word[:-1]) if i not in errors]) + '(' + word[-1] + ')',
-                    action2string(target_word, vocab)), errors
+                    action2string(target_word, vocab)), errors)
             len_word -= num_errors
         try:
             if len_word and (len_word > len_target_word or                          # overgenerated !
@@ -144,13 +145,13 @@ def oracle_with_rollout(word, target_word, rest_of_input, valid_actions,
                         message = ''.join(word), action2string(target_word, vocab)
                     else:
                         message = word[-1], vocab.char.i2w[target_word[len_word-1]]
-                    print u'Last action resulted in error: {}, {}'.format(*message)
+                    print(u'Last action resulted in error: {}, {}'.format(*message))
                 # there was an error, so in the following, ignore the last
                 # generated char in accordance to the optimal policy, i.e.
                 len_word -= 1
                 errors.add(len(word)-1)
-        except Exception, e:
-            print 'len_word, word, target word: ', len_word, ''.join(word), action2string(target_word, vocab)
+        except Exception as e:
+            print('len_word, word, target word: ', len_word, ''.join(word), action2string(target_word, vocab))
             raise e
 
     # (i) incorporate action validity into costs:
@@ -191,15 +192,15 @@ def oracle_with_rollout(word, target_word, rest_of_input, valid_actions,
                 cost = cost_actions(predicted_actions)
                 if verbose == 2:
                     # prediction, predicted actions, cost
-                    print u'DELETE COST (pred.): {}, {}, {}'.format(
-                        prediction, action2string(predicted_actions, vocab), cost)
+                    print(u'DELETE COST (pred.): {}, {}, {}'.format(
+                        prediction, action2string(predicted_actions, vocab), cost))
             else:
                 cost = del_cost + edit_cost_matrix(rest_of_input[1:],  # delete one symbol
                                                    target_word[len_word:])[-1, -1]
                 if verbose == 2:
                     # rest of lemma, rest of target, cost
-                    print u'DELETE COST (ref.): {}, {}, {}'.format(action2string(rest_of_input[1:], vocab),
-                           action2string(target_word[len_word:], vocab), cost)
+                    print(u'DELETE COST (ref.): {}, {}, {}'.format(action2string(rest_of_input[1:], vocab),
+                           action2string(target_word[len_word:], vocab), cost))
             action_costs.append(cost)
 
         if COPY in valid_actions and target_char_i == top_of_buffer:
@@ -209,14 +210,14 @@ def oracle_with_rollout(word, target_word, rest_of_input, valid_actions,
                 _, prediction, predicted_actions = rollout(COPY)
                 cost = cost_actions(predicted_actions)
                 if verbose == 2:
-                    print u'COPY COST (pred.): {}, {}, {}'.format(
-                        prediction, action2string(predicted_actions, vocab), cost)
+                    print(u'COPY COST (pred.): {}, {}, {}'.format(
+                        prediction, action2string(predicted_actions, vocab), cost))
             else:
                 cost = copy_cost + edit_cost_matrix(rest_of_input[1:],  # delete one symbol
                                                     target_word[len_word+1:])[-1, -1]  # insert this symbol
                 if verbose == 2:
-                    print u'COPY COST (ref.): {}, {}, {}'.format(action2string(rest_of_input[1:], vocab),
-                           action2string(target_word[len_word+1:], vocab), cost)
+                    print(u'COPY COST (ref.): {}, {}, {}'.format(action2string(rest_of_input[1:], vocab),
+                           action2string(target_word[len_word+1:], vocab), cost))
             action_costs.append(cost)
             
         if target_char in vocab.act.w2i:  # if such an action exists ...
@@ -229,8 +230,8 @@ def oracle_with_rollout(word, target_word, rest_of_input, valid_actions,
                 _, prediction, predicted_actions = rollout(COPY if bias_inserts_on else insert_target_char)
                 cost = cost_actions(predicted_actions)
                 if verbose == 2:
-                    print u'INSERT COST (pred.): {}, {}, {}'.format(
-                        prediction, action2string(predicted_actions, vocab), cost)
+                    print(u'INSERT COST (pred.): {}, {}, {}'.format(
+                        prediction, action2string(predicted_actions, vocab), cost))
             else:
                 if bias_inserts_on:   # ENCOURAGE WITH ORACLE INSERTS
                     cost = copy_cost + edit_cost_matrix(rest_of_input[1:],  # delete one symbol
@@ -239,14 +240,14 @@ def oracle_with_rollout(word, target_word, rest_of_input, valid_actions,
                     cost = ins_cost + edit_cost_matrix(rest_of_input,
                                                        target_word[len_word+1:])[-1, -1]  # insert one symbol
                 if verbose == 2:
-                    print u'INSERT COST (ref.): {}, {}, {}'.format(action2string(rest_of_input, vocab),
-                           action2string(target_word[len_word+1:], vocab), cost)
+                    print(u'INSERT COST (ref.): {}, {}, {}'.format(action2string(rest_of_input, vocab),
+                           action2string(target_word[len_word+1:], vocab), cost))
             action_costs.append(cost)
 
         if verbose == 2:
-            print 'Target char:', target_char_i, target_char
-            print 'Actions, action costs:', action2string(actions, vocab), action_costs
-            print 'Top of the buffer:', top_of_buffer, action2string([top_of_buffer], vocab)
+            print('Target char:', target_char_i, target_char)
+            print('Actions, action costs:', action2string(actions, vocab), action_costs)
+            print('Top of the buffer:', top_of_buffer, action2string([top_of_buffer], vocab))
         
         # minimal cost according to gold oracle:
         optimal_cost = np.min(action_costs)
@@ -257,12 +258,12 @@ def oracle_with_rollout(word, target_word, rest_of_input, valid_actions,
             costs[action] = cost - optimal_cost
 
     if verbose == 2: 
-        print 'Word:', u''.join(word)
-        print 'Target word:', action2string(target_word, vocab)
-        print 'Rest of input:', action2string(rest_of_input, vocab)
-        print 'Valid actions:', valid_actions, action2string(valid_actions, vocab)
-        print 'Optimal actions:', optimal_actions, action2string(optimal_actions, vocab)
-        print 'Costs:', costs
+        print('Word:', u''.join(word))
+        print('Target word:', action2string(target_word, vocab))
+        print('Rest of input:', action2string(rest_of_input, vocab))
+        print('Valid actions:', valid_actions, action2string(valid_actions, vocab))
+        print('Optimal actions:', optimal_actions, action2string(optimal_actions, vocab))
+        print('Costs:', costs)
     return optimal_actions, costs
 
 
@@ -291,8 +292,8 @@ def oracle(top_of_buffer, word, target_word, valid_actions, vocab):
         actions = []
         try:
             target_char = target_word[len_word] # next target char, unicode
-        except Exception, e:
-            print u''.join(word), target_word, len_word
+        except Exception as e:
+            print(u''.join(word), target_word, len_word)
             raise e
         target_char_i = vocab.char.w2i[target_char]
         if DELETE in valid_actions:
@@ -346,19 +347,19 @@ class Transducer(object):
         self.INSERTS   = range(self.vocab.number_specials, self.NUM_ACTS)
         
         # report stats
-        print u'{} actions: {}'.format(self.NUM_ACTS,
-            u', '.join(self.vocab.act.keys()))
-        print u'{} features: {}'.format(self.NUM_FEATS,
-            u', '.join(self.vocab.feat.keys()))
-        print u'{} lemma chars: {}'.format(self.NUM_CHARS,
-            u', '.join(self.vocab.char.keys()))
+        print(u'{} actions: {}'.format(self.NUM_ACTS,
+            u', '.join(self.vocab.act.keys())))
+        print(u'{} features: {}'.format(self.NUM_FEATS,
+            u', '.join(self.vocab.feat.keys())))
+        print(u'{} lemma chars: {}'.format(self.NUM_CHARS,
+            u', '.join(self.vocab.char.keys())))
 
         if self.avm_feat_format:
             self.NUM_FEAT_TYPES = self.vocab.feat_type_train
-            print u'{} feature types: {}'.format(self.NUM_FEAT_TYPES,
-                u', '.join(self.vocab.feat_type.keys()))
+            print(u'{} feature types: {}'.format(self.NUM_FEAT_TYPES,
+                u', '.join(self.vocab.feat_type.keys())))
             if self.pos_emb:
-                print 'Assuming AVM features, therefore no specialized pos embedding'
+                print('Assuming AVM features, therefore no specialized pos embedding')
                 self.pos_emb = False
         
         self._build_model(model)
@@ -382,12 +383,12 @@ class Transducer(object):
         self.CHAR_LOOKUP = model.add_lookup_parameters((self.NUM_CHARS, self.CHAR_DIM))
         if self.param_tying:
             self.ACT_LOOKUP = self.CHAR_LOOKUP
-            print 'NB! Using parameter tying: Chars and actions share embedding matrix.'
+            print('NB! Using parameter tying: Chars and actions share embedding matrix.')
         else:
             self.ACT_LOOKUP  = model.add_lookup_parameters((self.NUM_ACTS, self.ACTION_DIM))
         # embed features or bag-of-word them?
         if not self.FEAT_DIM:
-            print 'Using an n-hot representation for features.'
+            print('Using an n-hot representation for features.')
             # n-hot POS features are simply concatenated to feature vector
             self.FEAT_INPUT_DIM = self.NUM_FEATS + self.NUM_POS
         else:
@@ -397,15 +398,15 @@ class Transducer(object):
                 # POS feature is the only feature with many values (=`self.NUM_POS`), hence + 1.
                 # All other features are binary (e.g. SG and PL are disjoint binary features).
                 self.FEAT_INPUT_DIM = self.NUM_FEATS*self.FEAT_DIM  # + 1 for POS and - 1 for UNK
-                print 'All feature-value pairs are taken to be atomic, except for POS.'
+                print('All feature-value pairs are taken to be atomic, except for POS.')
             else:
                 self.POS_LOOKUP = self.FEAT_LOOKUP  # self.POS_LOOKUP is probably not needed
                 if self.avm_feat_format:
                     self.FEAT_INPUT_DIM = self.NUM_FEAT_TYPES*self.FEAT_DIM
-                    print 'All feature-value pairs are taken to be non-atomic.'
+                    print('All feature-value pairs are taken to be non-atomic.')
                 else:
                     self.FEAT_INPUT_DIM = (self.NUM_FEATS - 1)*self.FEAT_DIM  # -1 for UNK
-                    print 'Every feature-value pair is taken to be atomic.'
+                    print('Every feature-value pair is taken to be atomic.')
 
         # BiLSTM encoding lemma
         self.fbuffRNN  = self.LSTM(self.ENC_LAYERS, self.CHAR_DIM, self.ENC_HIDDEN_DIM, model)
@@ -419,16 +420,16 @@ class Transducer(object):
         if self.double_feats:
             self.CLASSIFIER_IMPUT_DIM += self.FEAT_INPUT_DIM
 
-        print ' * LEMMA biLSTM:      IN-DIM: {}, OUT-DIM: {}'.format(2*self.CHAR_DIM, 2*self.ENC_HIDDEN_DIM)
-        print ' * WORD LSTM:         IN-DIM: {}, OUT-DIM: {}'.format(self.WORD_REPR_DIM, self.DEC_HIDDEN_DIM)
-        print ' LEMMA LSTMs have {} layer(s)'.format(self.ENC_LAYERS)
-        print ' WORD LSTM has {} layer(s)'.format(self.DEC_LAYERS)
-        print
-        print ' * CHAR EMBEDDINGS:   IN-DIM: {}, OUT-DIM: {}'.format(self.NUM_CHARS, self.CHAR_DIM)
+        print(' * LEMMA biLSTM:      IN-DIM: {}, OUT-DIM: {}'.format(2*self.CHAR_DIM, 2*self.ENC_HIDDEN_DIM))
+        print(' * WORD LSTM:         IN-DIM: {}, OUT-DIM: {}'.format(self.WORD_REPR_DIM, self.DEC_HIDDEN_DIM))
+        print(' LEMMA LSTMs have {} layer(s)'.format(self.ENC_LAYERS))
+        print(' WORD LSTM has {} layer(s)'.format(self.DEC_LAYERS))
+        print()
+        print(' * CHAR EMBEDDINGS:   IN-DIM: {}, OUT-DIM: {}'.format(self.NUM_CHARS, self.CHAR_DIM))
         if not self.param_tying:
-            print ' * ACTION EMBEDDINGS: IN-DIM: {}, OUT-DIM: {}'.format(self.NUM_ACTS, self.ACTION_DIM)
+            print(' * ACTION EMBEDDINGS: IN-DIM: {}, OUT-DIM: {}'.format(self.NUM_ACTS, self.ACTION_DIM))
         if self.FEAT_DIM:
-            print ' * FEAT. EMBEDDINGS:  IN-DIM: {}, OUT-DIM: {}'.format(self.NUM_FEATS, self.FEAT_DIM)
+            print(' * FEAT. EMBEDDINGS:  IN-DIM: {}, OUT-DIM: {}'.format(self.NUM_FEATS, self.FEAT_DIM))
 
             
     def _classifier(self, model):
@@ -438,13 +439,13 @@ class Transducer(object):
             self.pW_s2h = model.add_parameters((self.MLP_DIM, self.CLASSIFIER_IMPUT_DIM))
             self.pb_s2h = model.add_parameters(self.MLP_DIM)
             feature_dim = self.MLP_DIM
-            print ' * HIDDEN LAYER:      IN-DIM: {}, OUT-DIM: {}'.format(self.CLASSIFIER_IMPUT_DIM, feature_dim)
+            print(' * HIDDEN LAYER:      IN-DIM: {}, OUT-DIM: {}'.format(self.CLASSIFIER_IMPUT_DIM, feature_dim))
         else:
             feature_dim = self.CLASSIFIER_IMPUT_DIM
         # hidden to action
         self.pW_act = model.add_parameters((self.NUM_ACTS, feature_dim))
         self.pb_act = model.add_parameters(self.NUM_ACTS)
-        print ' * SOFTMAX:           IN-DIM: {}, OUT-DIM: {}'.format(feature_dim, self.NUM_ACTS)
+        print(' * SOFTMAX:           IN-DIM: {}, OUT-DIM: {}'.format(feature_dim, self.NUM_ACTS))
         
     def _build_model(self, model):
         # feature model
@@ -460,7 +461,7 @@ class Transducer(object):
             # then vectorize lemma with UNK
             if unk_avg:
                 # UNK embedding is the average of trained embeddings (excluding UNK symbol=0)
-                UNK_CHAR_EMB = dy.average([self.CHAR_LOOKUP[i] for i in xrange(1, self.NUM_CHARS)])
+                UNK_CHAR_EMB = dy.average([self.CHAR_LOOKUP[i] for i in range(1, self.NUM_CHARS)])
             else:
                 # @TODO Pretrain it with "word dropout", otherwise
                 # these are randomly initialized embeddings.
@@ -628,9 +629,9 @@ class Transducer(object):
 
         if verbose and not dynamic:
             count = 0
-            print
-            print action2string(oracle_actions, self.vocab)
-            print lemma2string(lemma, self.vocab)
+            print()
+            print(action2string(oracle_actions, self.vocab))
+            print(lemma2string(lemma, self.vocab))
             
             
         if dynamic:
@@ -640,10 +641,10 @@ class Transducer(object):
         while len(action_history) <= MAX_ACTION_SEQ_LEN:
             
             if verbose and not dynamic:
-                print 'Action: ', count, self.vocab.act.i2w[action_history[-1]]
-                print 'Encoder length, char: ', lemma, len(encoder), self.vocab.char.i2w[encoder.s[-1][-1]]
-                print 'word: ', u''.join(word)
-                print ('Remaining actions: ', oracle_actions, action2string(oracle_actions, self.vocab))
+                print('Action: ', count, self.vocab.act.i2w[action_history[-1]])
+                print('Encoder length, char: ', lemma, len(encoder), self.vocab.char.i2w[encoder.s[-1][-1]])
+                print('word: ', u''.join(word))
+                print(('Remaining actions: ', oracle_actions, action2string(oracle_actions, self.vocab)))
                 count += 1
             
             # compute probability of each of the actions and choose an action
@@ -699,7 +700,7 @@ class Transducer(object):
                     # action is picked by sampling
                     action = sample(log_probs_np)
                     # @TODO IL learned roll-ins are done with policy i.e. greedy / beam search decoding
-                    if verbose: print 'Rolling in with model: ', action, self.vocab.act.i2w[action] 
+                    if verbose: print('Rolling in with model: ', action, self.vocab.act.i2w[action]) 
                 else:
                     # action is picked from optim_actions
                     action = optim_actions[np.argmax([log_probs_np[a] for a in optim_actions])]
@@ -738,18 +739,18 @@ class Transducer(object):
                 # 1. Increment attention index
                 try:
                     char_ = encoder.pop()
-                except IndexError, e:
-                    print np.exp(log_probs.npvalue())
-                    print 'COPY: ', action
+                except IndexError as e:
+                    print(np.exp(log_probs.npvalue()))
+                    print('COPY: ', action)
                 # 2. Append copied character to the output word
                 word.append(self.vocab.char.i2w[char_])
             elif action == DELETE:               
                 # 1. Increment attention index
                 try:
                     encoder.pop()
-                except IndexError, e:
-                    print np.exp(log_probs.npvalue())
-                    print 'DELETE: ', action
+                except IndexError as e:
+                    print(np.exp(log_probs.npvalue()))
+                    print('DELETE: ', action)
             elif action == END_WORD:
                 # 1. Finish transduction
                 break

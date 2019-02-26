@@ -45,6 +45,7 @@ Options:
 """
 
 from __future__ import division
+from __future__ import print_function
 from docopt import docopt
 
 import dynet as dy
@@ -66,7 +67,7 @@ sys.stdin = codecs.getreader('utf-8')(sys.__stdin__)
 
 def compute_channel(name, batches, transducer, vocab, paths, encoding='utf8'):
     then = time.time()
-    print 'evaluating on {} data...'.format(name)
+    print('evaluating on {} data...'.format(name))
     output = dict()
     for j, (act_word, batch) in enumerate(batches.items()):
         dy.renew_cg()
@@ -92,11 +93,11 @@ def compute_channel(name, batches, transducer, vocab, paths, encoding='utf8'):
         results = {'candidates': candidates, 'log_prob': log_prob, 'acts': pred_acts}
         output[(sample.word_str).encode(encoding)] = results
         if j > 0 and j % 100 == 0:
-            print '\t\t...{} batches'.format(j)
-    print '\t...finished in {:.3f} sec'.format(time.time() - then)
+            print('\t\t...{} batches'.format(j))
+    print('\t...finished in {:.3f} sec'.format(time.time() - then))
 
     path = os.path.join(paths['results_file_path'], name + '_channel.json')
-    print 'Writing results to file "{path}".'.format(path=path)
+    print('Writing results to file "{path}".'.format(path=path))
     with open(path, 'w') as w:
         json.dump(output, w, indent=4)
     return output
@@ -108,9 +109,9 @@ if __name__ == "__main__":
     random.seed(42)
 
     ddoc = docopt(__doc__)
-    print ddoc
+    print(ddoc)
 
-    print 'Processing arguments...'
+    print('Processing arguments...')
     ddoc.update({'--align-dumb': True, '--mode': 'il', '--try-reverse': False, '--iterations': 0, '--beam-width': 0,
                  '--beam-widths': None, '--dropout': 0, '--pretrain-dropout': False, '--optimization': None, '--l2': 0,
                  '--alpha': 0, '--beta': 0, '--no-baseline': False, '--epochs': 0, '--patience': 0,
@@ -121,7 +122,7 @@ if __name__ == "__main__":
     arguments = process_arguments(ddoc)
     paths, data_arguments, model_arguments, optim_arguments = arguments
 
-    print 'Loading data... Dataset: {}'.format(data_arguments['dataset'])
+    print('Loading data... Dataset: {}'.format(data_arguments['dataset']))
     train_data = data_arguments['dataset'].from_file(paths['train_path'], **data_arguments)
     VOCAB = train_data.vocab
     VOCAB.train_cutoff()  # knows that entities before come from train set
@@ -139,11 +140,11 @@ if __name__ == "__main__":
 
     model = dy.Model()
     transducer = model_arguments['transducer'](model, VOCAB, **model_arguments)
-    print 'Trying to load model from: {}'.format(paths['reload_path'])
+    print('Trying to load model from: {}'.format(paths['reload_path']))
     model.populate(paths['reload_path'])
     compute_channel('dev', dev_batches, transducer, VOCAB, paths)
     if test_data:
-        print '=========TEST EVALUATION:========='
+        print('=========TEST EVALUATION:=========')
         test_batches = defaultdict(set)
         for s in test_data.samples:
             test_batches[s.word_str].add(s)

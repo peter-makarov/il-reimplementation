@@ -10,6 +10,7 @@ Last Update: 12/01/2015
 Changed: Peter Makarov
 Last Update: 02/01/2018
 """
+from __future__ import print_function
 
 import sys, os
 import numpy as np
@@ -23,12 +24,12 @@ sys.stdin = codecs.getreader('utf-8')(sys.__stdin__)
 def distance(str1, str2):
     """Simple Levenshtein implementation for evalm."""
     m = np.zeros([len(str2)+1, len(str1)+1])
-    for x in xrange(1, len(str2) + 1):
+    for x in range(1, len(str2) + 1):
         m[x][0] = m[x-1][0] + 1
-    for y in xrange(1, len(str1) + 1):
+    for y in range(1, len(str1) + 1):
         m[0][y] = m[0][y-1] + 1
-    for x in xrange(1, len(str2) + 1):
-        for y in xrange(1, len(str1) + 1):
+    for x in range(1, len(str2) + 1):
+        for y in range(1, len(str1) + 1):
             if str1[y-1] == str2[x-1]:
                 dg = 0
             else:
@@ -106,7 +107,7 @@ def read_file(file_in, is_format2016=False, merge_same_keys=False):
             linest = line.strip()
             l = linest.split('\t')  # whitespace is a char!
             if len(l) != 3:
-                print 'Deleted too much!'
+                print('Deleted too much!')
                 l = l + ['']*(3-len(l))
             guess_id = [l[k] for k in key_ids]
             if merge_same_keys:
@@ -136,19 +137,19 @@ def read_write_gold(file_in, file_out, is_format2016=False, merge_same_keys=Fals
             linest = line.strip()
             l = linest.split('\t')  # whitespace is a char!
             if len(l) != 3:
-                print 'Deleted too much!'
+                print('Deleted too much!')
                 l = l + ['']*(3-len(l))
             goldens.append(l[value_id])
 
     for g in goldens:
-        print >> sys.stdout, g
+        print(g, file=sys.stdout)
 
 
 def pp(A, L, NL, R):
-    print "Accuracy:", A
-    print "Mean Levenshtein:", L
-    print "Mean Normalized Levenshtein:", NL
-    print "Mean Reciprocal Rank:", R
+    print("Accuracy:", A)
+    print("Mean Levenshtein:", L)
+    print("Mean Normalized Levenshtein:", NL)
+    print("Mean Reciprocal Rank:", R)
 
 
 if __name__ == "__main__":
@@ -171,19 +172,19 @@ if __name__ == "__main__":
         exit(0)
 
 
-    print 'Evaluation script arguments: ', args
-    print
+    print('Evaluation script arguments: ', args)
+    print()
     golden = read_file(args.golden, is_format2016=args.format2016, merge_same_keys=args.merge_same_keys)
     guesses = read_file(args.guesses, is_format2016=args.format2016, merge_same_keys=args.merge_same_keys)
 
     try:
         A, L, NL, R, breakdown, breakdown_N = aggregate(golden, guesses)
         for tag, (_A, _L, _NL, _R) in breakdown.items():
-            print tag
+            print(tag)
             _N = breakdown_N[tag]
             pp(_A / _N, _L / _N, _NL / _N, _R / _N)
-            print
-        print "Aggregate"
+            print()
+        print("Aggregate")
         pp(A, L, NL, R)
-    except ZeroDivisionError, e:
-        print 'Likely, using test file without gold predictions. Returning nothing!'
+    except ZeroDivisionError as e:
+        print('Likely, using test file without gold predictions. Returning nothing!')

@@ -63,7 +63,7 @@ class Encoder(object):
         bs = self.brnn.initial_state()
         fs_states = fs.add_inputs(embs)   # 1, 2, 3, 4
         bs_states = reversed(bs.add_inputs(reversed(embs)))  # 1, 2, 3, 4
-        self.s = list(reversed(zip(fs_states, bs_states, extras)))  # 4, 3, 2, 1
+        self.s = list(reversed(list(zip(fs_states, bs_states, extras))))  # 4, 3, 2, 1
         # special treatment for the final element
         final_s = self.s[0]
         self.final_embedding = dy.concatenate([final_s[0].output(),

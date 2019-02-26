@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 
 from defaults import DATA_PATH, RESULTS_PATH, NULL_ARGS
@@ -15,16 +16,16 @@ def process_paths(arguments):
             path = os.path.join(prefix, path)
             if is_data_path:
                 if not os.path.exists(path):
-                    print '{} incorrect: {} and {}'.format(arg_name, orig_path, path)
+                    print('{} incorrect: {} and {}'.format(arg_name, orig_path, path))
                     raise ValueError
             else:
                 if os.path.exists(path):
-                    print 'Warning! Output path exists: {}'.format(path)
+                    print('Warning! Output path exists: {}'.format(path))
                 elif create:
                     os.makedirs(path)
-                    print 'Created output path: {}'.format(path)
+                    print('Created output path: {}'.format(path))
         elif not is_data_path:
-            print 'Warning! Output path exists: {}'.format(path)
+            print('Warning! Output path exists: {}'.format(path))
         return path
 
     train_path = check_path(arguments['TRAIN-PATH'], 'TRAIN_PATH')
@@ -64,8 +65,8 @@ def process_paths(arguments):
                 reload_path = os.path.join(reload_dir, p)
                 break
         if not reload_path:
-            print 'Failed to find the model at this path: {}'.format(reload_dir)
-            print 'Will skip model reload.'
+            print('Failed to find the model at this path: {}'.format(reload_dir))
+            print('Will skip model reload.')
     else:
         reload_path = None
 
@@ -188,21 +189,21 @@ def process_arguments(arguments, verbose=True):
     optimization_arguments = process_optimization_arguments(arguments)
 
     if verbose:
-        print
-        print 'LANGUAGE: {}, REGIME: {}'.format(paths['lang'], paths['regime'])
+        print()
+        print('LANGUAGE: {}, REGIME: {}'.format(paths['lang'], paths['regime']))
 
-        print 'Train path:   {}'.format(paths['train_path'])
-        print 'Dev path:     {}'.format(paths['dev_path'])
-        print 'Test path:    {}'.format(paths['test_path'])
-        print 'Results path: {}'.format(paths['results_file_path'])
-        print
+        print('Train path:   {}'.format(paths['train_path']))
+        print('Dev path:     {}'.format(paths['dev_path']))
+        print('Test path:    {}'.format(paths['test_path']))
+        print('Results path: {}'.format(paths['results_file_path']))
+        print()
 
         for name, args in (('DATA ARGS:', data_arguments),
                            ('MODEL ARGS:', model_arguments),
                            ('OPTIMIZATION ARGS:', optimization_arguments)):
-            print name
-            for k, v in args.iteritems():
-                print '{:20} = {}'.format(k, v)
-            print
+            print(name)
+            for k, v in args.items():
+                print('{:20} = {}'.format(k, v))
+            print()
 
     return paths, data_arguments, model_arguments, optimization_arguments

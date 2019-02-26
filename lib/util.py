@@ -1,3 +1,4 @@
+from __future__ import print_function
 import os
 import codecs
 
@@ -8,27 +9,27 @@ def write_stats_file(dev_accuracy, paths, data_arguments, model_arguments, optim
 
     with open(paths['stats_file_path'], 'w') as w:
 
-        print >> w, 'LANGUAGE: {}, REGIME: {}'.format(paths['lang'], paths['regime'])
-        print >> w, 'Train path:   {}'.format(paths['train_path'])
-        print >> w, 'Dev path:     {}'.format(paths['dev_path'])
-        print >> w, 'Test path:    {}'.format(paths['test_path'])
-        print >> w, 'Results path: {}'.format(paths['results_file_path'])
+        print('LANGUAGE: {}, REGIME: {}'.format(paths['lang'], paths['regime']), file=w)
+        print('Train path:   {}'.format(paths['train_path']), file=w)
+        print('Dev path:     {}'.format(paths['dev_path']), file=w)
+        print('Test path:    {}'.format(paths['test_path']), file=w)
+        print('Results path: {}'.format(paths['results_file_path']), file=w)
 
         for k, v in paths.iteritems():
             if k not in ('lang', 'regime', 'train_path', 'dev_path',
                          'test_path', 'results_file_path'):
-                print >> w, '{:20} = {}'.format(k, v)
-        print >> w
+                print('{:20} = {}'.format(k, v), file=w)
+        print(file=w)
 
         for name, args in (('DATA ARGS:', data_arguments),
                            ('MODEL ARGS:', model_arguments),
                            ('OPTIMIZATION ARGS:', optim_arguments)):
-            print >> w, name
+            print(name, file=w)
             for k, v in args.iteritems():
-                print >> w, '{:20} = {}'.format(k, v)
-            print >> w
+                print('{:20} = {}'.format(k, v), file=w)
+            print(file=w)
 
-        print >> w, 'DEV ACCURACY (internal evaluation) = {}'.format(dev_accuracy)
+        print('DEV ACCURACY (internal evaluation) = {}'.format(dev_accuracy), file=w)
 
 
 def external_eval(output_path, gold_path, batches, predictions, sigm2017format, evalm_path=EVALM_PATH):

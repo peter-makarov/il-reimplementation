@@ -1,4 +1,5 @@
 from __future__ import division
+from __future__ import print_function
 
 import dynet as dy
 import numpy as np
@@ -63,9 +64,9 @@ class Transducer(Transducer):
         count = 0
         
         if debug_mode:
-            print
-            if oracle_actions: print action2string(oracle_actions, self.vocab)
-            print lemma2string(lemma, self.vocab)
+            print()
+            if oracle_actions: print(action2string(oracle_actions, self.vocab))
+            print(lemma2string(lemma, self.vocab))
         
         while len(action_history) <= MAX_ACTION_SEQ_LEN:
             
@@ -73,10 +74,10 @@ class Transducer(Transducer):
             encoder_embedding, char_enc = encoder.embedding(extra=True)
             
             if debug_mode:
-                print 'Action history: ', action_history, action2string(action_history, self.vocab)
-                print 'Encoder length: ', len(encoder) 
-                print 'Current char: ', char_enc, lemma2string([char_enc], self.vocab)
-                print 'Word so far: ', u''.join(word)
+                print('Action history: ', action_history, action2string(action_history, self.vocab))
+                print('Encoder length: ', len(encoder)) 
+                print('Current char: ', char_enc, lemma2string([char_enc], self.vocab))
+                print('Word so far: ', u''.join(word))
 
             # decoder
             decoder_input = dy.concatenate([encoder_embedding,

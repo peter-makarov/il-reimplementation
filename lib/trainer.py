@@ -1,4 +1,5 @@
 from __future__ import division
+from __future__ import print_function
 import time
 import random
 import progressbar
@@ -42,7 +43,7 @@ def internal_eval(batches, transducer, vocab,
                   check_condition=True, name='train'):
 
     then = time.time()
-    print 'evaluating on {} data...'.format(name)
+    print('evaluating on {} data...'.format(name))
 
     number_correct = 0.
     total_loss = 0.
@@ -71,21 +72,21 @@ def internal_eval(batches, transducer, vocab,
                 # of the previous epoch or its an error
                 if predicted_actions != previous_predicted_actions[i] or not correct_prediction:
                     #
-                    print 'BEFORE:    ', datasets.action2string(previous_predicted_actions[i], vocab)
-                    print 'THIS TIME: ', datasets.action2string(predicted_actions, vocab)
-                    print 'TRUE:      ', sample.act_repr
-                    print 'PRED:      ', prediction
-                    print 'WORD:      ', sample.word_str
-                    print 'X' if correct_prediction else 'V'
+                    print('BEFORE:    ', datasets.action2string(previous_predicted_actions[i], vocab))
+                    print('THIS TIME: ', datasets.action2string(predicted_actions, vocab))
+                    print('TRUE:      ', sample.act_repr)
+                    print('PRED:      ', prediction)
+                    print('WORD:      ', sample.word_str)
+                    print('X' if correct_prediction else 'V')
             # increment counter of samples
             i += 1
         batch_loss = -dy.average(batch_loss)
         total_loss += batch_loss.scalar_value()
         # report progress
-        if j > 0 and j % 100 == 0: print '\t\t...{} batches'.format(j)
+        if j > 0 and j % 100 == 0: print('\t\t...{} batches'.format(j))
 
     accuracy = number_correct / i
-    print '\t...finished in {:.3f} sec'.format(time.time() - then)
+    print('\t...finished in {:.3f} sec'.format(time.time() - then))
     return accuracy, total_loss, predictions, pred_acts
 
 
@@ -94,7 +95,7 @@ def internal_eval_beam(batches, transducer, vocab,
                   check_condition=True, name='train'):
     assert callable(getattr(transducer, "beam_search_decode", None)), 'transducer does not implement beam search.'
     then = time.time()
-    print 'evaluating on {} data with beam search (beam width {})...'.format(name, beam_width)
+    print('evaluating on {} data with beam search (beam width {})...'.format(name, beam_width))
     number_correct = 0.
     total_loss = 0.
     predictions = []
@@ -125,33 +126,33 @@ def internal_eval_beam(batches, transducer, vocab,
                     # compare to greedy prediction:
                     _, greedy_prediction, _ = transducer.transduce(sample.lemma, feats, external_cg=True)
                     if greedy_prediction != prediction:
-                        print 'Beam! Target: ', sample.word_str
-                        print 'Greedy prediction: ', greedy_prediction
-                        print u'Complete hypotheses:'
+                        print('Beam! Target: ', sample.word_str)
+                        print('Greedy prediction: ', greedy_prediction)
+                        print(u'Complete hypotheses:')
                         for log_p, _, pred_word, pred_actions in hypotheses:
-                            print u'Actions {}, word {}, -log p {:.3f}'.format(
-                                datasets.action2string(pred_actions, vocab), pred_word, -log_p)
+                            print(u'Actions {}, word {}, -log p {:.3f}'.format(
+                                datasets.action2string(pred_actions, vocab), pred_word, -log_p))
 
             if check_condition:
                 # display prediction for this sample if it differs the prediction
                 # of the previous epoch or its an error
                 if predicted_actions != previous_predicted_actions[i] or not correct_prediction:
                     #
-                    print 'BEFORE:    ', datasets.action2string(previous_predicted_actions[i], vocab)
-                    print 'THIS TIME: ', datasets.action2string(predicted_actions, vocab)
-                    print 'TRUE:      ', sample.act_repr
-                    print 'PRED:      ', prediction
-                    print 'WORD:      ', sample.word_str
-                    print 'X' if correct_prediction else 'V'
+                    print('BEFORE:    ', datasets.action2string(previous_predicted_actions[i], vocab))
+                    print('THIS TIME: ', datasets.action2string(predicted_actions, vocab))
+                    print('TRUE:      ', sample.act_repr)
+                    print('PRED:      ', prediction)
+                    print('WORD:      ', sample.word_str)
+                    print('X' if correct_prediction else 'V')
             # increment counter of samples
             i += 1
         batch_loss = -np.mean(batch_loss)
         total_loss += batch_loss
         # report progress
-        if j > 0 and j % 100 == 0: print '\t\t...{} batches'.format(j)
+        if j > 0 and j % 100 == 0: print('\t\t...{} batches'.format(j))
 
     accuracy = number_correct / i
-    print '\t...finished in {:.3f} sec'.format(time.time() - then)
+    print('\t...finished in {:.3f} sec'.format(time.time() - then))
     return accuracy, total_loss, predictions, pred_acts
 
 class TrainingSession(object):
@@ -186,11 +187,11 @@ class TrainingSession(object):
         self.sanity_batches = [self.train_data.samples[:sanity_size][i:i+self.decbatch_size]
             for i in range(0, sanity_size, self.decbatch_size)]
 
-        print 'Decoding batch size is {}.'.format(self.decbatch_size)
-        print 'Training batch size is {}.'.format(self.batch_size)
-        print 'There are {} train and {} dev samples.'.format(self.train_len, self.dev_len)
-        print 'There are {} train batches and {} dev batches.'.format(
-            (self.train_len / self.batch_size) + 1, len(self.dev_batches))
+        print('Decoding batch size is {}.'.format(self.decbatch_size))
+        print('Training batch size is {}.'.format(self.batch_size))
+        print('There are {} train and {} dev samples.'.format(self.train_len, self.dev_len))
+        print('There are {} train batches and {} dev batches.'.format(
+            (self.train_len / self.batch_size) + 1, len(self.dev_batches)))
 
         # BOOKKEEPING OF PREDICTED ACTIONS
         self.dev_predicted_actions = [None]*self.dev_len
@@ -207,18 +208,18 @@ class TrainingSession(object):
         self.best_train_accuracy = 0.
 
     def reload(self, path2model, tmp_model_path=None):
-        print 'Trying to reload model from: {}'.format(path2model)
+        print('Trying to reload model from: {}'.format(path2model))
         self.model.populate(path2model)
-        print 'Computing dev accuracy of the reloaded model...'
+        print('Computing dev accuracy of the reloaded model...')
         # initialize dev stats from the pretrained model
         self.best_dev_accuracy, self.best_avg_dev_loss = \
             self.dev_eval(check_condition=False)
-        print 'Dev accuracy, dev loss: ', self.best_dev_accuracy, self.best_avg_dev_loss
+        print('Dev accuracy, dev loss: ', self.best_dev_accuracy, self.best_avg_dev_loss)
         self.best_dev_loss_epoch = -1
         self.best_dev_acc_epoch  = -1
         if tmp_model_path and tmp_model_path != path2model:
             self.model.save(tmp_model_path)
-            print 'saved reloaded model as best model to {}'.format(tmp_model_path)
+            print('saved reloaded model as best model to {}'.format(tmp_model_path))
 
     def action2string(self, acts):
         return datasets.action2string(acts, self.vocab)
@@ -241,13 +242,13 @@ class TrainingSession(object):
 
     def run_MLE_training(self, **kwargs):
 
-        print 'Running MLE training...'
+        print('Running MLE training...')
         l2 = kwargs.get('l2')
         if l2:
-            print 'Using l2-regularization with parameter {}'.format(l2)
+            print('Using l2-regularization with parameter {}'.format(l2))
 
         self.model.save(kwargs['tmp_model_path'])
-        print 'saved initial model to {}'.format(kwargs['tmp_model_path'])
+        print('saved initial model to {}'.format(kwargs['tmp_model_path']))
 
         def MLE_batch_update(batch, *args):
             # How to update model parameters from
@@ -271,10 +272,10 @@ class TrainingSession(object):
 
     def run_il_training(self, **kwargs):
 
-        print 'Running IL training...'
+        print('Running IL training...')
         l2 = kwargs.get('l2')
         if l2:
-            print 'Using l2-regularization with parameter {}'.format(l2)
+            print('Using l2-regularization with parameter {}'.format(l2))
         k = kwargs['il_k']
         c = None  # @TODO Add for linear dicay: kwargs.get('c'), currently simply ignore it
         decay_schedule = SCHEDULED_SAMPLING_DECAYS.get(kwargs.get('il_decay'), INVERSE_SIGMOID)
@@ -286,15 +287,15 @@ class TrainingSession(object):
         pretrain_epochs    = kwargs['il_tforcing_epochs']
         optimal_oracle     = kwargs['il_optimal_oracle']
 
-        print 'Using {} roll-in decay schedule with parameters: k={}{}. Will apply decay after {} epoch.'.format(
-            decay_schedule, k, ', c = {}'.format(c) if c else '', pretrain_epochs)
+        print('Using {} roll-in decay schedule with parameters: k={}{}. Will apply decay after {} epoch.'.format(
+            decay_schedule, k, ', c = {}'.format(c) if c else '', pretrain_epochs))
         print ('Using {} loss and beta={} ({}) to mix reference and learned roll-outs. Reference policy is {}{}.'
                .format(loss_expression, rollout_mixin_beta,
                        'global' if global_rollout else 'local',
                        'optimal' if optimal_oracle else 'sub-optimal',
                        ' (insert bias in learned roll-outs)' if bias_inserts else ''))
         self.model.save(kwargs['tmp_model_path'])
-        print 'saved initial model to {}'.format(kwargs['tmp_model_path'])
+        print('saved initial model to {}'.format(kwargs['tmp_model_path']))
         verbose = kwargs['check_condition']
 
         def il_training_batch_update(batch, *args):
@@ -303,7 +304,7 @@ class TrainingSession(object):
             dy.renew_cg()
             epoch = args[0]
             e = 1 - decay(epoch-pretrain_epochs) if epoch >= pretrain_epochs else 0.
-            if verbose and e: print 'Sampling probability = {:.3f}'.format(e)
+            if verbose and e: print('Sampling probability = {:.3f}'.format(e))
             batch_loss = []
             for sample in batch:
                 feats = sample.pos, sample.feats
@@ -335,7 +336,7 @@ class TrainingSession(object):
 
     def run_RL_training(self, **kwargs):
 
-        print 'Running RL training...'
+        print('Running RL training...')
         #print 'Trainer attributes: ', self.trainer.__dict__
 
         sample_size = kwargs['sample_size']
@@ -344,9 +345,9 @@ class TrainingSession(object):
         use_baseline = kwargs['baseline']
         verbose = True if kwargs['check_condition'] else False
 
-        print 'Will draw {} samples per training sample.'.format(sample_size)
-        print 'Will use greedy baseline for reward correction.' if use_baseline else 'Will not use baseline reward correction.'
-        print 'Will apply negative scaling of {}.'.format(scale_neg)
+        print('Will draw {} samples per training sample.'.format(sample_size))
+        print('Will use greedy baseline for reward correction.' if use_baseline else 'Will not use baseline reward correction.')
+        print('Will apply negative scaling of {}.'.format(scale_neg))
 
         def compute_reward(word, word_str, prediction):
             # `word` is an integer code,
@@ -381,7 +382,7 @@ class TrainingSession(object):
                     # BASELINE REWARD
                     reward_b = compute_reward(word, word_str, prediction_b)
 
-                for _ in xrange(sample_size):
+                for _ in range(sample_size):
 
                     # SAMPLING-BASED PREDICTION
                     loss, prediction, predicted_actions = \
@@ -435,12 +436,12 @@ class TrainingSession(object):
                 batch_loss.backward()
                 self.trainer.update()
                 if verbose:
-                    print 'Batch loss, batch reward: ', loss, sum(rewards)/num_nonzero_grad
-                    print 'Batch reward mean (std): %.3f (%.3f)' % (np.mean(rewards), np.std(rewards))
+                    print('Batch loss, batch reward: ', loss, sum(rewards)/num_nonzero_grad)
+                    print('Batch reward mean (std): %.3f (%.3f)' % (np.mean(rewards), np.std(rewards)))
             else:
                 loss = 0
                 if verbose:
-                    print 'Batch loss is zero.'
+                    print('Batch loss is zero.')
             return loss
 
         self.run_training(RL_batch_update, **kwargs)
@@ -448,7 +449,7 @@ class TrainingSession(object):
 
     def run_MRT_training(self, **kwargs):
 
-        print 'Running MRT training with sampling...'
+        print('Running MRT training with sampling...')
         #print 'Trainer attributes: ', self.trainer.__dict__
 
         sample_size = kwargs['sample_size']
@@ -459,9 +460,9 @@ class TrainingSession(object):
         action_penalty = 0  # 0.2
 
 
-        print 'Alpha parameter will be {}'.format(alpha_p)
-        print 'Beta scaling factor for NED will be {}'.format(beta_ned)
-        print 'Sample size will be {}'.format(sample_size)
+        print('Alpha parameter will be {}'.format(alpha_p))
+        print('Beta scaling factor for NED will be {}'.format(beta_ned))
+        print('Sample size will be {}'.format(sample_size))
 
         def compute_reward(word, word_str, prediction):
             # `word` is an integer code,
@@ -542,7 +543,7 @@ class TrainingSession(object):
 
                 # SCALE & RENORMALIZE: (these are log P)
                 if len(sample_rewards) == 1 and sample_rewards[0] == -1.:
-                    if verbose: print 'Nothing to update with.'
+                    if verbose: print('Nothing to update with.')
                     continue
                 else:
                     if action_penalty:
@@ -566,10 +567,10 @@ class TrainingSession(object):
                     q = dy.cdiv(q_unnorm, dy.sum_elems(q_unnorm))
 
                     if verbose:
-                        print 'q', q.npvalue()
-                        print 'sample_rewards', sample_rewards.npvalue()
-                        print 'word', word_str
-                        print 'predictions: ', u', '.join(predictions)
+                        print('q', q.npvalue())
+                        print('sample_rewards', sample_rewards.npvalue())
+                        print('word', word_str)
+                        print('predictions: ', u', '.join(predictions))
                     batch_loss.append(dy.dot_product(q, sample_rewards))
             if batch_loss:
                 batch_loss = dy.esum(batch_loss)
@@ -577,18 +578,18 @@ class TrainingSession(object):
                 try:
                     batch_loss.backward()
                     self.trainer.update()
-                except Exception, e:
-                    print 'Batch loss: ', loss
-                    print 'q', q.npvalue()
-                    print 'q_unnorm', q_unnorm.npvalue()
-                    print 'gold_loss', gold_loss.scalar_value()
-                    print 'sample_rewards', sample_rewards.npvalue()
-                    print 'word', word_str
-                    print 'predictions: ', u', '.join(predictions)
+                except Exception as e:
+                    print('Batch loss: ', loss)
+                    print('q', q.npvalue())
+                    print('q_unnorm', q_unnorm.npvalue())
+                    print('gold_loss', gold_loss.scalar_value())
+                    print('sample_rewards', sample_rewards.npvalue())
+                    print('word', word_str)
+                    print('predictions: ', u', '.join(predictions))
                     raise e
-                if verbose: print 'Batch loss: ', loss
+                if verbose: print('Batch loss: ', loss)
             else:
-                if verbose: print 'Batch loss is zero.'
+                if verbose: print('Batch loss is zero.')
                 loss = 0.
             return loss
 
@@ -611,12 +612,12 @@ class TrainingSession(object):
         if optimizer is None:
             optimizer = self.optimizer
         self.trainer = optimizer(self.model)
-        print 'Initialized trainer with: {}.'.format(optimizer)
+        print('Initialized trainer with: {}.'.format(optimizer))
 
         if dropout:
-            print 'Using dropout of {}.'.format(dropout)
+            print('Using dropout of {}.'.format(dropout))
         else:
-            print 'Not using dropout.'
+            print('Not using dropout.')
 
         if check_condition == 2:  # max verbose flag... @TODO
             check_condition = lambda e: e > 0
@@ -627,10 +628,10 @@ class TrainingSession(object):
         if train_until_accuracy and 0 < train_until_accuracy <= 1.:
             epochs = 10000
             max_patience = 10000
-            print 'Will train until training set accuracy of {} is reached.'.format(train_until_accuracy)
+            print('Will train until training set accuracy of {} is reached.'.format(train_until_accuracy))
         else:
-            print 'Will train for a maximum of {} epochs with patience of {}.'.format(epochs, max_patience)
-        print 'Will early stop based on dev {}.'.format('accuracy' if pick_best_accuracy else 'loss')
+            print('Will train for a maximum of {} epochs with patience of {}.'.format(epochs, max_patience))
+        print('Will early stop based on dev {}.'.format('accuracy' if pick_best_accuracy else 'loss'))
 
         # PROGRESS BAR INIT
         widgets = [progressbar.Bar('>'), ' ', progressbar.ETA()]
@@ -642,9 +643,9 @@ class TrainingSession(object):
 
         patience = 0
 
-        for epoch in xrange(epochs):
+        for epoch in range(epochs):
 
-            print 'training...'
+            print('training...')
             then = time.time()
 
             train_loss = 0.
@@ -652,21 +653,21 @@ class TrainingSession(object):
             train = self.train_data.samples
             random.shuffle(train)
             batches = [train[i:i+self.batch_size] for i in range(0, self.train_len, self.batch_size)]
-            print 'Number of train batches: {}.'.format(len(batches))
+            print('Number of train batches: {}.'.format(len(batches)))
 
             # ENABLE DROPOUT
             if dropout: self.transducer.set_dropout(dropout)
 
             for j, batch in enumerate(batches):
                 train_loss += batch_update(batch, epoch)
-                if j > 0 and j % 100 == 0: print '\t\t...{} batches'.format(j)
-            print '\t\t...{} batches'.format(j)
+                if j > 0 and j % 100 == 0: print('\t\t...{} batches'.format(j))
+            print('\t\t...{} batches'.format(j))
 
             # DISABLE DROPOUT AFTER TRAINING
             if dropout: self.transducer.disable_dropout()
-            print '\t...finished in {:.3f} sec'.format(time.time() - then)
+            print('\t...finished in {:.3f} sec'.format(time.time() - then))
             self.avg_loss = train_loss / self.train_len
-            print 'Average train loss: ', self.avg_loss
+            print('Average train loss: ', self.avg_loss)
 
             # EVALUATE MODEL ON SUBSET OF TRAIN (SANITY)
             train_accuracy, avg_loss = self.train_eval(check_condition(epoch))
@@ -682,38 +683,38 @@ class TrainingSession(object):
                 self.best_dev_accuracy = dev_accuracy
                 self.best_dev_acc_epoch = epoch
                 # using dev acc for early stopping
-                print 'Found best dev accuracy so far {:.7f}'.format(self.best_dev_accuracy)
+                print('Found best dev accuracy so far {:.7f}'.format(self.best_dev_accuracy))
                 if pick_best_accuracy: patience = 0
 
             if avg_dev_loss < self.best_avg_dev_loss:
                 self.best_avg_dev_loss = avg_dev_loss
                 self.best_dev_loss_epoch = epoch
                 # using dev loss for early stopping
-                print 'Found best dev loss so far {:.7f}'.format(self.best_avg_dev_loss)
+                print('Found best dev loss so far {:.7f}'.format(self.best_avg_dev_loss))
                 if not pick_best_accuracy: patience = 0
 
             if patience == 0:
                 # patience has been reset to 0, so save currently best model
                 self.model.save(tmp_model_path)
-                print 'saved new best model to {}'.format(tmp_model_path)
+                print('saved new best model to {}'.format(tmp_model_path))
 
-            print ('epoch: {} train loss: {:.4f} dev loss: {:.4f} dev acc: {:.4f} '
+            print(('epoch: {} train loss: {:.4f} dev loss: {:.4f} dev acc: {:.4f} '
                'train acc: {:.4f} best train acc: {:.4f} best dev acc: {:.4f} (epoch {}) '
                'best dev loss: {:.7f} (epoch {}) patience = {}').format(
                epoch, self.avg_loss, avg_dev_loss, dev_accuracy, train_accuracy,
                self.best_train_accuracy, self.best_dev_accuracy, self.best_dev_acc_epoch,
-               self.best_avg_dev_loss, self.best_dev_loss_epoch, patience)
+               self.best_avg_dev_loss, self.best_dev_loss_epoch, patience))
 
             # LOG LATEST RESULTS
             with open(log_file_path, 'a') as a:
                 a.write("{}\t{}\t{}\t{}\n".format(epoch, self.avg_loss, train_accuracy, dev_accuracy))
 
             if patience == max_patience:
-                print 'out of patience after {} epochs'.format(epoch + 1)
+                print('out of patience after {} epochs'.format(epoch + 1))
                 train_progress_bar.finish()
                 break
             if train_until_accuracy and train_accuracy > train_until_accuracy:
-                print 'reached required training accuracy level of {}'.format(train_until_accuracy)
+                print('reached required training accuracy level of {}'.format(train_until_accuracy))
                 train_progress_bar.finish()
                 break
 
@@ -731,18 +732,18 @@ def withheld_data_eval(name, batches, transducer, vocab, beam_widths,
     greedy_accuracy, _, predictions, _ = internal_eval(batches,
         transducer, vocab, None, check_condition=False, name=name)
     if greedy_accuracy > 0:
-        print '{} accuracy: {}'.format(name, greedy_accuracy)
+        print('{} accuracy: {}'.format(name, greedy_accuracy))
     else:
-        print 'Possibly covered test data. Accuracy zero.'
+        print('Possibly covered test data. Accuracy zero.')
     # write out greedy predictions and scores
     util.external_eval(pred_path('greedy'), gold_path, batches, predictions, sigm2017format)
 
     # BEAM-SEARCH-BASED PREDICTIONS FROM THIS MODEL
     if beam_widths:
-        print '\nDecoding with beam search...'
+        print('\nDecoding with beam search...')
         #import hacm, hacm_sub, hard
         if not callable(getattr(transducer, "beam_search_decode", None)):
-            print 'Transducer does not implement beam search.'
+            print('Transducer does not implement beam search.')
             raise NotImplementedError
             #isinstance(transducer, hacm_sub.MinimalTransducer):
         else:
@@ -750,9 +751,9 @@ def withheld_data_eval(name, batches, transducer, vocab, beam_widths,
                 accuracy, _, predictions, _ = internal_eval_beam(batches,
                     transducer, vocab, beam_width, None, check_condition=False, name=name)
                 if accuracy > 0:
-                    print 'beam-{} accuracy {}'.format(beam_width, accuracy)
+                    print('beam-{} accuracy {}'.format(beam_width, accuracy))
                 else:
-                    print 'Zero accuracy.'
+                    print('Zero accuracy.')
                 # write out predictions and scores more specifically
                 beam_path = pred_path('beam' + str(beam_width))
                 util.external_eval(beam_path, gold_path, batches, predictions, sigm2017format)

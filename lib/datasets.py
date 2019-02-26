@@ -1,4 +1,5 @@
 from __future__ import division
+from __future__ import print_function
 
 import os
 import codecs
@@ -44,11 +45,11 @@ class BaseDataSample(object):
             feats_delimiter = u','
         # encode features as integers
         # POS feature treated separately
-        assert isinstance(lemma_str, unicode), lemma_str
+        assert isinstance(lemma_str, str), lemma_str
         assert not any(c in lemma_str for c in SPECIAL_CHARS), (lemma_str, SPECIAL_CHARS)
-        assert isinstance(word_str, unicode), word_str
+        assert isinstance(word_str, str), word_str
         assert not any(c in word_str for c in SPECIAL_CHARS), (word_str, SPECIAL_CHARS)
-        assert isinstance(feat_str, unicode), feat_str
+        assert isinstance(feat_str, str), feat_str
         # `avm_feat_format=True` implies that `pos_emb=False`
         if avm_feat_format: assert not pos_emb
         # encode lemma characters
@@ -74,8 +75,8 @@ class BaseDataSample(object):
             lemma = lemma + [END_WORD]
         # print features and lemma at a high verbosity level
         if verbose == 2:
-            print u'POS & features from {}, {}, {}: {}, {}'.format(feat_str, word_str, lemma_str, pos, feats)
-            print u'lemma encoding: {}'.format(lemma)
+            print(u'POS & features from {}, {}, {}: {}, {}'.format(feat_str, word_str, lemma_str, pos, feats))
+            print(u'lemma encoding: {}'.format(lemma))
         return cls(lemma, lemma_str, word, word_str, pos, feats, feat_str, tag_wraps, vocab)
 
 
@@ -138,15 +139,15 @@ class BaseDataSet(object):
         training_data = True if 'train' in os.path.basename(filename) else False
         datasamples = []
 
-        print 'Loading data from file: {}'.format(filename)
-        print 'These are {} data.'.format('training' if training_data else 'holdout')
-        print 'Word boundary tags?', tag_wraps
-        print 'Verbose?', verbose
+        print('Loading data from file: {}'.format(filename))
+        print('These are {} data.'.format('training' if training_data else 'holdout'))
+        print('Word boundary tags?', tag_wraps)
+        print('Verbose?', verbose)
 
         if avm_feat_format:
             # check that `avm_feat_format` and `pos_emb` does not clash
             if pos_emb:
-                print 'Attribute-value feature matrix implies that no specialized pos embedding is used.'
+                print('Attribute-value feature matrix implies that no specialized pos embedding is used.')
                 pos_emb = False
 
         with codecs.open(filename, encoding=encoding) as f:
@@ -170,12 +171,12 @@ class NonAlignedDataSet(BaseDataSet):
         else:
             vocab = EditVocab(pos_emb=pos_emb, avm_feat_format=avm_feat_format,
                                  param_tying=param_tying)
-        print vocab
+        print(vocab)
         #return super(NonAlignedDataSet, cls).from_file(filename, vocab, , **kwargs)
         ds = super(NonAlignedDataSet, cls).from_file(filename, vocab, DataSample=NonAlignedDataSample,
                                                        pos_emb=pos_emb, avm_feat_format=avm_feat_format, **kwargs)
-        print 'Number of actions: {}'.format(len(ds.vocab.act))
-        print u'Action set: {}'.format(' '.join(sorted(ds.vocab.act.keys())))
+        print('Number of actions: {}'.format(len(ds.vocab.act)))
+        print(u'Action set: {}'.format(' '.join(sorted(ds.vocab.act.keys()))))
         return ds
 
 class AlignedDataSet(BaseDataSet):
@@ -192,23 +193,23 @@ class AlignedDataSet(BaseDataSet):
         else:
             self.wrapper = lambda s: s
 
-        print 'Started aligning with {} aligner...'.format(self.aligner)
+        print('Started aligning with {} aligner...'.format(self.aligner))
         aligned_pairs = self.aligner([(s.lemma_str, s.word_str) for s in self.samples], **kwargs)
-        print 'Finished aligning.'
+        print('Finished aligning.')
 
-        print 'Started building oracle actions...'
+        print('Started building oracle actions...')
         for (al, aw), s in zip(aligned_pairs, self.samples):
             al = self.wrapper(al)
             aw = self.wrapper(aw)
             self._build_oracle_actions(al, aw, sample=s, **kwargs)
-        print 'Finished building oracle actions.'
-        print 'Number of actions: {}'.format(len(self.vocab.act))
-        print u'Action set: {}'.format(' '.join(sorted(self.vocab.act.keys())))
+        print('Finished building oracle actions.')
+        print('Number of actions: {}'.format(len(self.vocab.act)))
+        print(u'Action set: {}'.format(' '.join(sorted(self.vocab.act.keys()))))
 
         if self.verbose:
-            print 'Examples of oracle actions:'
+            print('Examples of oracle actions:')
             for a in (s.act_repr for s in self.samples[:20]):
-                print a #.encode('utf8')
+                print(a) #.encode('utf8')
 
     def _build_oracle_actions(self, al_lemma, al_word, sample, **kwargs):
         pass
@@ -233,8 +234,8 @@ class MinimalDataSet(AlignedDataSet):
                 if i+1 < alignment_len and lemma[i+1] != ALIGN_SYMBOL:
                     actions.append(STEP)
         if self.verbose == 2:
-            print u'{}\n{}\n{}\n'.format(word,
-                action2string(actions, self.vocab), lemma)
+            print(u'{}\n{}\n{}\n'.format(word,
+                action2string(actions, self.vocab), lemma))
 
         sample.set_actions(actions, lemma, word)
 
@@ -246,7 +247,7 @@ class MinimalDataSet(AlignedDataSet):
         else:
             vocab = MinimalVocab(pos_emb=pos_emb, avm_feat_format=avm_feat_format,
                                  param_tying=param_tying)
-        print vocab
+        print(vocab)
         return super(MinimalDataSet, cls).from_file(filename, vocab, pos_emb=pos_emb,
                                                     avm_feat_format=avm_feat_format, **kwargs)
 
@@ -258,16 +259,16 @@ class EditDataSet(AlignedDataSet):
         # "try reverse" only makes sense with dumb aligner
         self.try_reverse = try_reverse and self.aligner == dumb_align  # @TODO Fix bug
         if self.try_reverse:
-            print 'USING STRING REVERSING WITH DUMB ALIGNMENT...'
-            print 'USING DEFAULT ALIGN SYMBOL ~'
+            print('USING STRING REVERSING WITH DUMB ALIGNMENT...')
+            print('USING DEFAULT ALIGN SYMBOL ~')
         self.copy_as_substitution = copy_as_substitution
         self.substitution = substitution
         if copy_as_substitution is True:
             self.substitution = True
-            print 'TREATING COPY AS SUBSTITUTIONS'
+            print('TREATING COPY AS SUBSTITUTIONS')
         if self.substitution is True:
             self.reorder_deletes = False
-            print 'USING SUBSTITUTION ACTIONS, NOT REORDERING DELETES'
+            print('USING SUBSTITUTION ACTIONS, NOT REORDERING DELETES')
         else:
             self.reorder_deletes = reorder_deletes
         # "frequency check" for COPY and DELETE actions
@@ -284,9 +285,9 @@ class EditDataSet(AlignedDataSet):
             print ('Alignment results: COPY action freq {:.3f}, '
                    'DELETE action freq {:.3f}'.format(freq_copy, freq_delete))
             if freq_copy < copy_low:
-                print 'WARNING: Too few COPY actions!\n'
+                print('WARNING: Too few COPY actions!\n')
             if freq_delete > delete_high:
-                print 'WARNING: Many DELETE actions!\n'
+                print('WARNING: Many DELETE actions!\n')
 
     def _build_oracle_actions(self, lemma, word, sample, **kwargs):
         # Makarov et al 2017 Algorithm 1
@@ -361,9 +362,9 @@ class EditDataSet(AlignedDataSet):
             actions = reordered_actions + suffix
 
         if self.verbose == 2:
-            print u'{}\n{}\n{}\n'.format(word,
+            print(u'{}\n{}\n{}\n'.format(word,
                                          action2string(actions, self.vocab),
-                                         lemma)
+                                         lemma))
 
         sample.set_actions(actions, lemma, word)
 
@@ -375,7 +376,7 @@ class EditDataSet(AlignedDataSet):
         else:
             vocab = EditVocab(pos_emb=pos_emb, avm_feat_format=avm_feat_format,
                               param_tying=param_tying)
-        print vocab
+        print(vocab)
         return super(EditDataSet, cls).from_file(filename, vocab, pos_emb=pos_emb,
                                                  avm_feat_format=avm_feat_format, **kwargs)
 
@@ -386,7 +387,7 @@ if __name__ == "__main__":
 
     for dataset, name in ((MinimalDataSet, 'MinimalDataSet'), (EditDataSet, 'EditDataSet'),
                           (NonAlignedDataSet, 'NonAlignedDataSet')):
-        print '\n\n*** DATASET TYPE (TRAIN): ***',  name
+        print('\n\n*** DATASET TYPE (TRAIN): ***',  name)
         train_fn = os.path.join(DATA_PATH, 'russian-train-low')
         ds = dataset.from_file(train_fn, verbose=0,
                                tag_wraps='both',
@@ -394,7 +395,7 @@ if __name__ == "__main__":
                                iterations=5)
         vocab = ds.vocab
 
-        print '\n\n*** DATASET TYPE (DEV): ***', name
+        print('\n\n*** DATASET TYPE (DEV): ***', name)
         dev_fn = os.path.join(DATA_PATH, 'russian-dev')
         ds = dataset.from_file(dev_fn, vocab=vocab,
                                verbose=0,

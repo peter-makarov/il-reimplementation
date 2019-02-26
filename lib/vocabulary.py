@@ -1,3 +1,4 @@
+from __future__ import print_function
 from collections import Counter
 
 from defaults import (UNK, UNK_CHAR, BEGIN_WORD, BEGIN_WORD_CHAR,
@@ -14,7 +15,7 @@ class Vocab(object):
             self.w2i = dict()
         else:
             self.w2i = dict(w2i)
-        self.i2w = {i:w for w,i in self.w2i.iteritems()}
+        self.i2w = {i:w for w,i in self.w2i.items()}
         self.encoding = encoding
         self.freqs = Counter(self.i2w.keys())
 
@@ -71,19 +72,19 @@ class VocabBox(object):
         if pos_emb:
             # pos features get special treatment
             self.pos = Vocab(w2i_feats, encoding=encoding)
-            print 'VOCAB will index POS separately.'
+            print('VOCAB will index POS separately.')
         else:
             self.pos = self.feat
         if avm_feat_format:
             # feature types get encoded, too
             self.feat_type = Vocab(dict(), encoding=encoding)
-            print 'VOCAB will index all feature types.'
+            print('VOCAB will index all feature types.')
         else:
             self.feat_type = self.feat
         if param_tying:
             # use one set of indices for acts and chars
             self.char = self.act
-            print 'VOCAB will use same indices for actions and chars.'
+            print('VOCAB will use same indices for actions and chars.')
         else:
             # special chars
             w2i_chars = {BEGIN_WORD_CHAR : BEGIN_WORD,

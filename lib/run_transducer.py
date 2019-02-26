@@ -102,6 +102,7 @@ Options:
 """
 
 from __future__ import division
+from __future__ import print_function
 from docopt import docopt
 
 import dynet as dy
@@ -112,9 +113,9 @@ from args_processor import process_arguments
 from datasets import BaseDataSet
 from trainer import TrainingSession, dev_external_eval, test_external_eval
 
-sys.stdout = codecs.getwriter('utf-8')(sys.__stdout__)
-sys.stderr = codecs.getwriter('utf-8')(sys.__stderr__)
-sys.stdin = codecs.getreader('utf-8')(sys.__stdin__)
+#sys.stdout = codecs.getwriter('utf-8')(sys.__stdout__)
+#sys.stderr = codecs.getwriter('utf-8')(sys.__stderr__)
+#sys.stdin = codecs.getreader('utf-8')(sys.__stdin__)
 
 
 if __name__ == "__main__":
@@ -122,13 +123,13 @@ if __name__ == "__main__":
     np.random.seed(42)
     random.seed(42)
 
-    print docopt(__doc__)
+    print(docopt(__doc__))
 
-    print 'Processing arguments...'
+    print('Processing arguments...')
     arguments = process_arguments(docopt(__doc__))
     paths, data_arguments, model_arguments, optim_arguments = arguments
 
-    print 'Loading data... Dataset: {}'.format(data_arguments['dataset'])
+    print('Loading data... Dataset: {}'.format(data_arguments['dataset']))
     train_data = data_arguments['dataset'].from_file(paths['train_path'], **data_arguments)
     VOCAB = train_data.vocab
     VOCAB.train_cutoff()  # knows that entities before come from train set
@@ -145,7 +146,7 @@ if __name__ == "__main__":
 
     if not optim_arguments['eval']:
 
-        print 'Building model for training... Transducer: {}'.format(model_arguments['transducer'])
+        print('Building model for training... Transducer: {}'.format(model_arguments['transducer']))
         model = dy.Model()
         transducer = model_arguments['transducer'](model, VOCAB, **model_arguments)
 
@@ -162,7 +163,7 @@ if __name__ == "__main__":
             pretrain_epochs = optim_arguments['pretrain-epochs']
             train_until_accuracy = optim_arguments['pretrain-until']
             if pretrain_epochs:
-                print 'Pretraining the model in a supervised manner for {} epochs.'.format(pretrain_epochs)
+                print('Pretraining the model in a supervised manner for {} epochs.'.format(pretrain_epochs))
             else:
                 print ('Pretraining the model in a supervised manner until'
                     ' train accuracy {}.'.format(train_until_accuracy))
@@ -175,11 +176,11 @@ if __name__ == "__main__":
                 log_file_path=paths['log_file_path'],
                 tmp_model_path=paths['tmp_model_path'],
                 check_condition=data_arguments['verbose'])
-            print 'Finished pretraining. Train loss: {}'.format(training_session.avg_loss)
-            print 'Reloading the best supervised model...'
+            print('Finished pretraining. Train loss: {}'.format(training_session.avg_loss))
+            print('Reloading the best supervised model...')
             training_session.reload(paths['tmp_model_path'])
         else:
-            print 'No supervised pretraining.'
+            print('No supervised pretraining.')
 
         if optim_arguments['mode'] == 'mle':
             training_session.run_MLE_training(
@@ -241,20 +242,20 @@ if __name__ == "__main__":
                 tmp_model_path=paths['tmp_model_path'],
                 check_condition=data_arguments['verbose'])
         else:
-            raise NotImplementedError, 'Unknown training mode.'
+            raise NotImplementedError('Unknown training mode.')
     else:
-        print 'Skipped training by request. Evaluating best models.'
+        print('Skipped training by request. Evaluating best models.')
 
-    print '=========DEV EVALUATION:========='
+    print('=========DEV EVALUATION:=========')
 
     model = dy.Model()
     transducer = model_arguments['transducer'](model, VOCAB, **model_arguments)
-    print 'Trying to load model from: {}'.format(paths['tmp_model_path'])
+    print('Trying to load model from: {}'.format(paths['tmp_model_path']))
     model.populate(paths['tmp_model_path'])
     dev_external_eval(dev_batches, transducer, VOCAB, *arguments)
 
     if test_data:
-        print '=========TEST EVALUATION:========='
+        print('=========TEST EVALUATION:=========')
         test_batches = [test_data.samples[i:i+batch_size] for i in range(0, len(test_data), batch_size)]
         test_external_eval(test_batches, transducer, VOCAB, paths,
                            optim_arguments['beam-widths'], data_arguments['sigm2017format'])
