@@ -1,14 +1,11 @@
-from __future__ import division
-from __future__ import print_function
-
 from collections import Counter
 
 import dynet as dy
 import numpy as np
 
-from defaults import COPY, DELETE, BEGIN_WORD, END_WORD, UNK, MAX_ACTION_SEQ_LEN
-from stack_lstms import Encoder
-from datasets import action2string, lemma2string
+from trans.defaults import COPY, DELETE, BEGIN_WORD, END_WORD, UNK, MAX_ACTION_SEQ_LEN
+from trans.stack_lstms import Encoder
+from trans.datasets import action2string, lemma2string
 
 NONLINS = {'tanh' : dy.tanh, 'ReLU' : dy.rectify}
 

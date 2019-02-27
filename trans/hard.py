@@ -1,13 +1,10 @@
-from __future__ import division
-from __future__ import print_function
-
 import dynet as dy
 import numpy as np
 
-from datasets import action2string
-from defaults import STEP, BEGIN_WORD, END_WORD, UNK, MAX_ACTION_SEQ_LEN
-from stack_lstms import Encoder
-from transducer import Transducer
+from trans.datasets import action2string
+from trans.defaults import STEP, BEGIN_WORD, END_WORD, UNK, MAX_ACTION_SEQ_LEN
+from trans.stack_lstms import Encoder
+from trans.transducer import Transducer
 
 """ Reimplementation of Roee Aharoni & Joav Goldberg's hard-attention transducer model """
 

@@ -19,7 +19,7 @@
 import itertools
 from ctypes import *
 
-libalign = cdll.LoadLibrary('./libalign.so')
+libalign = cdll.LoadLibrary('trans/libalign.so')
 
 libalign_add_int_pair = libalign.add_int_pair
 libalign_clear_counts = libalign.clear_counts

@@ -100,19 +100,17 @@ Options:
   --test-path=TEST-PATH         test set path
   --reload-path=RELOAD-PATH     reload a pretrained model at this path (possibly relative to RESULTS-PATH)
 """
-
-from __future__ import division
-from __future__ import print_function
 from docopt import docopt
 
 import dynet as dy
 import numpy as np
 import random
-import sys, codecs
-from args_processor import process_arguments
-from datasets import BaseDataSet
-from trainer import TrainingSession, dev_external_eval, test_external_eval
+from trans.args_processor import process_arguments
+from trans.datasets import BaseDataSet
+from trans.trainer import TrainingSession, dev_external_eval, test_external_eval
 
+#import sys
+#import codecs
 #sys.stdout = codecs.getwriter('utf-8')(sys.__stdout__)
 #sys.stderr = codecs.getwriter('utf-8')(sys.__stderr__)
 #sys.stdin = codecs.getreader('utf-8')(sys.__stdin__)

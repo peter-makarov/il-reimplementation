@@ -43,9 +43,6 @@ Options:
   --test-path=TEST-PATH         test set path
   --reload-path=RELOAD-PATH     reload a pretrained model at this path (possibly relative to RESULTS-PATH)
 """
-
-from __future__ import division
-from __future__ import print_function
 from docopt import docopt
 
 import dynet as dy
@@ -55,8 +52,8 @@ import time
 import os
 import sys
 import codecs
-from args_processor import process_arguments
-from datasets import BaseDataSet, action2string
+from trans.args_processor import process_arguments
+from trans.datasets import BaseDataSet, action2string
 from collections import defaultdict
 import json
 

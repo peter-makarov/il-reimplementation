@@ -1,11 +1,10 @@
-from __future__ import print_function
 import os
 
-from defaults import DATA_PATH, RESULTS_PATH, NULL_ARGS
-from aligners import smart_align, dumb_align, cls_align
-import datasets
-import transducer
-import hard
+from trans.defaults import DATA_PATH, RESULTS_PATH, NULL_ARGS
+from trans.aligners import smart_align, dumb_align, cls_align
+from trans import datasets
+from trans import transducer
+from trans import hard
 
 def process_paths(arguments):
 

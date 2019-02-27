@@ -1,8 +1,7 @@
 #-*- coding: utf-8 -*-
-from __future__ import print_function
-import align
+from trans import align
 
-from defaults import ALIGN_SYMBOL
+from trans.defaults import ALIGN_SYMBOL
 
 #############################################################
 # ALIGNERS

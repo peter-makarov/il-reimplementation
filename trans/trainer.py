@@ -1,5 +1,3 @@
-from __future__ import division
-from __future__ import print_function
 import time
 import random
 import progressbar
@@ -7,11 +5,11 @@ import editdistance
 import dynet as dy
 import numpy as np
 
-import util
-import datasets
-from defaults import SANITY_SIZE
+from trans import util
+from trans import datasets
+from trans.defaults import SANITY_SIZE
 
-from transducer import cost_actions, edit_cost_matrix
+from trans.transducer import cost_actions, edit_cost_matrix
 
 OPTIMIZERS = {'ADAM'    : #dy.AdamTrainer,
                           lambda m: dy.AdamTrainer(m, alpha=0.0005,

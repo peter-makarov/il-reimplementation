@@ -1,15 +1,12 @@
-from __future__ import division
-from __future__ import print_function
-
 import os
 import codecs
 
-from aligners import smart_align, dumb_align
-from defaults import (ALIGN_SYMBOL, STEP, COPY, DELETE,
+from trans.aligners import smart_align, dumb_align
+from trans.defaults import (ALIGN_SYMBOL, STEP, COPY, DELETE,
                       BEGIN_WORD_CHAR, END_WORD_CHAR,
                       BEGIN_WORD, END_WORD, DELETE_CHAR, COPY_CHAR,
                       UNK, SPECIAL_CHARS)
-from vocabulary import EditVocab, MinimalVocab
+from trans.vocabulary import EditVocab, MinimalVocab
 
 #############################################################
 # DATASETS

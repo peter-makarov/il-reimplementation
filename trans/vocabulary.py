@@ -1,7 +1,6 @@
-from __future__ import print_function
 from collections import Counter
 
-from defaults import (UNK, UNK_CHAR, BEGIN_WORD, BEGIN_WORD_CHAR,
+from trans.defaults import (UNK, UNK_CHAR, BEGIN_WORD, BEGIN_WORD_CHAR,
     END_WORD, END_WORD_CHAR, STEP, STEP_CHAR, DELETE, DELETE_CHAR,
     COPY, COPY_CHAR)
 
