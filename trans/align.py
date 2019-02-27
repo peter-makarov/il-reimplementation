@@ -14,12 +14,15 @@
 
 # Relies on C-code in libalign.so built from align.c through ctypes.
 # Author: Mans Hulden
+#
+# Fixed by Peter Makarov
 # MH20151102
 
+import os
 import itertools
 from ctypes import *
 
-libalign = cdll.LoadLibrary('trans/libalign.so')
+libalign = cdll.LoadLibrary(os.path.join(os.os.path.dirname(__file__), 'libalign.so'))
 
 libalign_add_int_pair = libalign.add_int_pair
 libalign_clear_counts = libalign.clear_counts
