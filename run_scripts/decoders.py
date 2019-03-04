@@ -50,16 +50,17 @@ import numpy as np
 import random
 import time
 import os
-import sys
-import codecs
+#import sys
+#import codecs
 from trans.args_processor import process_arguments
 from trans.datasets import BaseDataSet, action2string
+from trans.defaults import UNK
 from collections import defaultdict
 import json
 
-sys.stdout = codecs.getwriter('utf-8')(sys.__stdout__)
-sys.stderr = codecs.getwriter('utf-8')(sys.__stderr__)
-sys.stdin = codecs.getreader('utf-8')(sys.__stdin__)
+#sys.stdout = codecs.getwriter('utf-8')(sys.__stdout__)
+#sys.stderr = codecs.getwriter('utf-8')(sys.__stderr__)
+#sys.stdin = codecs.getreader('utf-8')(sys.__stdin__)
 
 
 def compute_channel(name, batches, transducer, vocab, paths, encoding='utf8'):
@@ -68,12 +69,20 @@ def compute_channel(name, batches, transducer, vocab, paths, encoding='utf8'):
     output = dict()
     for j, (act_word, batch) in enumerate(batches.items()):
         dy.renew_cg()
+        #dy.renew_cg(immediate_compute=True, check_validity=True)
         log_prob = []
         pred_acts = []
         candidates = []
         for sample in batch:
             # @TODO one could imagine to draw multiple samples (then sampling=True)....
             feats = sample.pos, sample.feats
+            unseen = False
+            for a in sample.actions:
+                if a >= vocab.act_train:
+                    print('Action unseen in training: ', vocab.act.i2w[a], '...skipping this sample.')
+                    unseen = True
+            if unseen:
+                continue
             loss, _, predicted_actions = transducer.transduce(sample.lemma, feats,
                                                               oracle_actions={'loss': "nll",
                                                                               'rollout_mixin_beta': 1.,
@@ -84,18 +93,18 @@ def compute_channel(name, batches, transducer, vocab, paths, encoding='utf8'):
                                                               sampling=False,
                                                               channel=True,
                                                               external_cg=True)
-            pred_acts.append(action2string(predicted_actions, vocab).encode(encoding))
+            pred_acts.append(action2string(predicted_actions, vocab))
             log_prob.append(dy.esum(loss).value())  # sum log probabilities of actions
-            candidates.append(sample.lemma_str.encode(encoding))
+            candidates.append(sample.lemma_str)
         results = {'candidates': candidates, 'log_prob': log_prob, 'acts': pred_acts}
-        output[(sample.word_str).encode(encoding)] = results
+        output[sample.word_str] = results
         if j > 0 and j % 100 == 0:
             print('\t\t...{} batches'.format(j))
     print('\t...finished in {:.3f} sec'.format(time.time() - then))
 
     path = os.path.join(paths['results_file_path'], name + '_channel.json')
     print('Writing results to file "{path}".'.format(path=path))
-    with open(path, 'w') as w:
+    with open(path, 'w', encoding=encoding) as w:
         json.dump(output, w, indent=4)
     return output
 
@@ -120,7 +129,9 @@ if __name__ == "__main__":
     paths, data_arguments, model_arguments, optim_arguments = arguments
 
     print('Loading data... Dataset: {}'.format(data_arguments['dataset']))
-    train_data = data_arguments['dataset'].from_file(paths['train_path'], **data_arguments)
+    train_data = data_arguments['dataset'].from_file(paths['train_path'],
+                                                     results_file_path=paths['results_file_path'],
+                                                     **data_arguments)
     VOCAB = train_data.vocab
     VOCAB.train_cutoff()  # knows that entities before come from train set
     dev_data = data_arguments['dataset'].from_file(paths['dev_path'], vocab=VOCAB, **data_arguments)
@@ -132,13 +143,15 @@ if __name__ == "__main__":
 
     dev_batches = defaultdict(set)
     for s in dev_data.samples:
-        dev_batches[s.word_str].add(s)
+        if not any(t.lemma == s.lemma and t.actions == s.actions and t.pos == s.pos and t.feats == s.feats
+                   for t in dev_batches[s.word_str]):
+            dev_batches[s.word_str].add(s)
     dev_batches = dict(dev_batches)
 
     model = dy.Model()
     transducer = model_arguments['transducer'](model, VOCAB, **model_arguments)
-    print('Trying to load model from: {}'.format(paths['reload_path']))
-    model.populate(paths['reload_path'])
+    print('Trying to load model from: {}'.format(paths['tmp_model_path']))
+    model.populate(paths['tmp_model_path'])
     compute_channel('dev', dev_batches, transducer, VOCAB, paths)
     if test_data:
         print('=========TEST EVALUATION:=========')

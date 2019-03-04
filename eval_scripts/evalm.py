@@ -64,13 +64,14 @@ def aggregate(golden, guesses):
     N = 0
     A, L, NL, R = 0.0, 0.0, 0.0, 0.0
     for tag, gold in golden.items():
-        
         if tag in guesses:
             guess = guesses[tag]
             # assumes only 1 golden analysis
             if len(gold) > 1:
-                for elem in gold[1:]:
-                    assert elem == gold[0], u"gold: {}, tag: {}".format(', '.join(gold), tag).encode('utf8')
+                for elem in set(gold[1:]):
+                    if elem != gold[0]:
+                        print('**Warning! Multiple distinct targets! gold: {0} ({1}), tag: {2}'.format(
+                            ', '.join(set(gold)), len(gold), tag))
                     
             acc, lev, rank = evaluate(gold[0], guess)
             A, L, NL, R = A+acc, L+lev, NL+(lev / len(gold[0])), R+rank

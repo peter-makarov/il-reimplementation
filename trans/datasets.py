@@ -1,5 +1,6 @@
-import os
 import codecs
+import json
+import os
 
 from trans.aligners import smart_align, dumb_align
 from trans.defaults import (ALIGN_SYMBOL, STEP, COPY, DELETE,
@@ -163,8 +164,17 @@ class NonAlignedDataSet(BaseDataSet):
     @classmethod
     def from_file(cls, filename, vocab=None, pos_emb=True, avm_feat_format=False,
                   param_tying=False, **kwargs):
+        print('RELOAD PATH', kwargs.get('results_file_path'))
         if vocab:
             assert isinstance(vocab, EditVocab)
+        elif kwargs.get('results_file_path') and os.path.exists(os.path.join(kwargs['results_file_path'], 'vocab.json')):
+            path2vocab = os.path.join(kwargs['results_file_path'], 'vocab.json')
+            print('Loading vocab from file: ', path2vocab)
+            with open(path2vocab, 'r', encoding='utf8') as f:
+                vocab = EditVocab.from_json(json.load(f))
+            assert vocab.pos_emb == pos_emb, vocab
+            assert vocab.avm_feat_format == avm_feat_format, vocab
+            assert vocab.param_tying == param_tying, vocab
         else:
             vocab = EditVocab(pos_emb=pos_emb, avm_feat_format=avm_feat_format,
                                  param_tying=param_tying)
@@ -239,8 +249,17 @@ class MinimalDataSet(AlignedDataSet):
     @classmethod
     def from_file(cls, filename, vocab=None, pos_emb=True, avm_feat_format=False,
                   param_tying=False, **kwargs):
+        print('RELOAD PATH', kwargs.get('results_file_path'))
         if vocab:
             assert isinstance(vocab, MinimalVocab)
+        elif kwargs.get('results_file_path') and os.path.exists(os.path.join(kwargs['results_file_path'], 'vocab.json')):
+            path2vocab = os.path.join(kwargs['results_file_path'], 'vocab.json')
+            print('Loading vocab from file: ', path2vocab)
+            with open(path2vocab, 'r', encoding='utf8') as f:
+                vocab = MinimalVocab.from_json(json.load(f))
+            assert vocab.pos_emb == pos_emb, vocab
+            assert vocab.avm_feat_format == avm_feat_format, vocab
+            assert vocab.param_tying == param_tying, vocab
         else:
             vocab = MinimalVocab(pos_emb=pos_emb, avm_feat_format=avm_feat_format,
                                  param_tying=param_tying)
@@ -368,8 +387,17 @@ class EditDataSet(AlignedDataSet):
     @classmethod
     def from_file(cls, filename, vocab=None, pos_emb=True, avm_feat_format=False,
                   param_tying=False, **kwargs):
+        print('RELOAD PATH', kwargs.get('results_file_path'))
         if vocab:
             assert isinstance(vocab, EditVocab)
+        elif kwargs.get('results_file_path') and os.path.exists(os.path.join(kwargs['results_file_path'], 'vocab.json')):
+            path2vocab = os.path.join(kwargs['results_file_path'], 'vocab.json')
+            print('Loading vocab from file: ', path2vocab)
+            with open(path2vocab, 'r', encoding='utf8') as f:
+                vocab = EditVocab.from_json(json.load(f))
+            assert vocab.pos_emb == pos_emb, vocab
+            assert vocab.avm_feat_format == avm_feat_format, vocab
+            assert vocab.param_tying == param_tying, vocab
         else:
             vocab = EditVocab(pos_emb=pos_emb, avm_feat_format=avm_feat_format,
                               param_tying=param_tying)

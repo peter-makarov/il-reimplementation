@@ -109,6 +109,7 @@ from trans.args_processor import process_arguments
 from trans.datasets import BaseDataSet
 from trans.trainer import TrainingSession, dev_external_eval, test_external_eval
 
+import json
 #import sys
 #import codecs
 #sys.stdout = codecs.getwriter('utf-8')(sys.__stdout__)
@@ -128,9 +129,10 @@ if __name__ == "__main__":
     paths, data_arguments, model_arguments, optim_arguments = arguments
 
     print('Loading data... Dataset: {}'.format(data_arguments['dataset']))
-    train_data = data_arguments['dataset'].from_file(paths['train_path'], **data_arguments)
+    train_data = data_arguments['dataset'].from_file(paths['train_path'], results_file_path=paths['results_file_path'],
+                                                     **data_arguments)
     VOCAB = train_data.vocab
-    VOCAB.train_cutoff()  # knows that entities before come from train set
+    VOCAB.train_cutoff(paths['results_file_path'])  # knows that entities before come from train set
     dev_data = data_arguments['dataset'].from_file(paths['dev_path'], vocab=VOCAB, **data_arguments)
     if paths['test_path']:
         # no alignments, hence BaseDataSet

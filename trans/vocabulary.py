@@ -1,4 +1,7 @@
+import json
+import os
 from collections import Counter
+from typing import Dict
 
 from trans.defaults import (UNK, UNK_CHAR, BEGIN_WORD, BEGIN_WORD_CHAR,
     END_WORD, END_WORD_CHAR, STEP, STEP_CHAR, DELETE, DELETE_CHAR,
@@ -28,6 +31,13 @@ class Vocab(object):
             w2i[word] = idx
             idx += 1
         return Vocab(w2i, encoding=encoding)
+
+    @classmethod
+    def from_json(cls, d: Dict):
+        v = Vocab(w2i=d['w2i'], encoding=d['encoding'])
+        v.freqs = Counter()
+        v.freqs.update(d['freqs'])
+        return v
     
     def __getitem__(self, word):
         # encodes the word if it is not in vocab
@@ -56,12 +66,20 @@ class Vocab(object):
     def __len__(self): return self.size()
     
     def size(self): return len(self.w2i.keys())
+
+    def serialize(self) -> Dict:
+        return dict(w2i=self.w2i, encoding=self.encoding, freqs=self.freqs)
+
     
 
 class VocabBox(object):
     def __init__(self, acts, pos_emb, avm_feat_format, param_tying, encoding):
 
-        self.w2i_acts = acts
+        self.w2i_acts = dict(acts)
+        self.encoding = encoding
+        self.pos_emb = pos_emb
+        self.avm_feat_format = avm_feat_format
+        self.param_tying = param_tying
         self.act = Vocab(acts, encoding=encoding)
         # number of special actions
         self.number_specials = len(self.w2i_acts)
@@ -102,7 +120,7 @@ class VocabBox(object):
         return ('VocabBox (act, feat, pos, char, feat_type) with the following '
                 'special actions: {}'.format(self.w2i_acts))
     
-    def train_cutoff(self):
+    def train_cutoff(self, path=None):
         # store indices separating training set elements
         # from elements encoded later from unseen samples
         self.act_train  = len(self.act)
@@ -110,6 +128,21 @@ class VocabBox(object):
         self.pos_train  = len(self.pos)
         self.char_train = len(self.char)
         self.feat_type_train = len(self.feat_type)
+        if path:
+            path2vocab = os.path.join(path, 'vocab.json')
+            if os.path.exists(path2vocab):
+                print('Path to vocab exists. Will not rewrite vocab: ', path2vocab)
+            else:
+                print('Writing vocab to: ', path2vocab)
+                with open(path2vocab, 'w') as w:
+                    json.dump(self.serialize(), w, indent=4)
+
+    def serialize(self) -> Dict:
+        return dict(encoding=self.encoding, pos_emb=self.pos_emb,
+                    avm_feat_format=self.avm_feat_format, param_tying=self.param_tying,
+                    w2i_acts=self.w2i_acts, number_specials=self.number_specials,
+                    act=self.act.serialize(), char=self.char.serialize(), word=self.word.serialize(),
+                    feat=self.feat.serialize(), pos=self.pos.serialize(), feat_type=self.feat_type.serialize())
 
 class MinimalVocab(VocabBox):
     def __init__(self, pos_emb=True, avm_feat_format=False, param_tying=False, encoding=None):
@@ -118,7 +151,21 @@ class MinimalVocab(VocabBox):
                 END_WORD_CHAR : END_WORD,
                 STEP_CHAR : STEP}
         super(MinimalVocab, self).__init__(acts, pos_emb, avm_feat_format, param_tying, encoding)
-        
+
+    @classmethod
+    def from_json(cls, d: Dict):
+        v = cls(d['pos_emb'], d['avm_feat_format'], d['param_tying'], d['encoding'])
+        assert v.w2i_acts == d['w2i_acts']
+        v.act = Vocab.from_json(d['act'])
+        v.feat = Vocab.from_json(d['feat'])
+        v.word = Vocab.from_json(d['word'])
+        v.pos = Vocab.from_json(d['pos']) if d['pos_emb'] else v.feat
+        v.feat_type = Vocab.from_json(d['feat_type']) if d['avm_feat_format'] else v.feat
+        v.char = v.act if d['param_tying'] else Vocab.from_json(d['char'])
+        v.train_cutoff()
+        return v
+
+
 class EditVocab(VocabBox):
     def __init__(self, pos_emb=True, avm_feat_format=False, param_tying=False, encoding=None):
         acts = {UNK_CHAR : UNK,
@@ -127,3 +174,16 @@ class EditVocab(VocabBox):
                 DELETE_CHAR : DELETE,
                 COPY_CHAR : COPY}
         super(EditVocab, self).__init__(acts, pos_emb, avm_feat_format, param_tying, encoding)
+
+    @classmethod
+    def from_json(cls, d: Dict):
+        v = cls(d['pos_emb'], d['avm_feat_format'], d['param_tying'], d['encoding'])
+        assert v.w2i_acts == d['w2i_acts']
+        v.act = Vocab.from_json(d['act'])
+        v.feat = Vocab.from_json(d['feat'])
+        v.word = Vocab.from_json(d['word'])
+        v.pos = Vocab.from_json(d['pos']) if d['pos_emb'] else v.feat
+        v.feat_type = Vocab.from_json(d['feat_type']) if d['avm_feat_format'] else v.feat
+        v.char = v.act if d['param_tying'] else Vocab.from_json(d['char'])
+        v.train_cutoff()
+        return v

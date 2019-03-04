@@ -53,19 +53,20 @@ def process_paths(arguments):
     if arguments['--reload-path'] == 'self':
         # flag to reload from result directory
         reload_path = tmp_model_path
-    elif arguments['--reload-path']:
-        # reload path is relative to `RESULTS_PATH`
-        # it's some possibly differently named model
-        reload_path = None
-        reload_dir = check_path(arguments['--reload-path'],
-            'RESULTS_PATH', is_data_path=False, create=False)
-        for p in os.listdir(reload_dir):
-            if p.endswith('model'):
-                reload_path = os.path.join(reload_dir, p)
-                break
-        if not reload_path:
-            print('Failed to find the model at this path: {}'.format(reload_dir))
-            print('Will skip model reload.')
+    # @TODO The semantics of this needs to be clarified
+    # elif arguments['--reload-path']:
+    #     # reload path is relative to `RESULTS_PATH`
+    #     # it's some possibly differently named model
+    #     reload_path = None
+    #     reload_dir = check_path(arguments['--reload-path'],
+    #         'RESULTS_PATH', is_data_path=False, create=False)
+    #     for p in os.listdir(reload_dir):
+    #         if p.endswith('model'):
+    #             reload_path = os.path.join(reload_dir, p)
+    #             break
+    #     if not reload_path:
+    #         print('Failed to find the model at this path: {}'.format(reload_dir))
+    #         print('Will skip model reload.')
     else:
         reload_path = None
 
