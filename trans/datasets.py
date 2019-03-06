@@ -15,7 +15,7 @@ from trans.vocabulary import EditVocab, MinimalVocab
 
 class BaseDataSample(object):
     # data sample with encoded features
-    def __init__(self, lemma, lemma_str, word, word_str, pos, feats, feat_str, tag_wraps, vocab):
+    def __init__(self, lemma, lemma_str, word, word_str, pos, feats, feat_str, sample_weight, tag_wraps, vocab):
         self.vocab = vocab          # vocab of unicode strings
         self.lemma = lemma          # list of encoded lemma characters
         self.lemma_str = lemma_str  # unicode string
@@ -26,6 +26,7 @@ class BaseDataSample(object):
         self.feat_str = feat_str    # original serialization of features, unicode
         # new serialization of features, unicode
         self.feat_repr = feats2string(self.pos, self.feats, self.vocab)
+        self.sample_weight = sample_weight  # in the case of weighted training
         self.tag_wraps = tag_wraps  # were lemma / word wrapped with word boundary tags '<' and '>'?
 
     def __repr__(self):
@@ -34,13 +35,28 @@ class BaseDataSample(object):
 
     @classmethod
     def from_row(cls, vocab, tag_wraps, verbose, row, sigm2017format=True,
-                 no_feat_format=False, pos_emb=True, avm_feat_format=False):
-        if sigm2017format:
-            lemma_str, word_str, feat_str = row
-            feats_delimiter = u';'
-        else:
-            lemma_str, feat_str, word_str = row
-            feats_delimiter = u','
+                 no_feat_format=False, pos_emb=True, avm_feat_format=False,
+                 sample_weights=False):
+        try:
+            if sigm2017format:
+                feats_delimiter = u';'
+                if sample_weights:
+                    lemma_str, word_str, feat_str, sample_weight = row
+                    sample_weight = float(sample_weight)
+                else:
+                    lemma_str, word_str, *feat_str = row
+                    feat_str = feat_str[0]
+                    sample_weight = None
+            else:
+                feats_delimiter = u','
+                if sample_weights:
+                    raise Exception('Only sigmorphon 2017 format supports sample weights.')
+                lemma_str, feat_str, *word_str = row
+                word_str = word_str[0]
+                sample_weight = None
+        except ValueError as e:
+            print(row)
+            raise e
         # encode features as integers
         # POS feature treated separately
         assert isinstance(lemma_str, str), lemma_str
@@ -75,7 +91,7 @@ class BaseDataSample(object):
         if verbose == 2:
             print(u'POS & features from {}, {}, {}: {}, {}'.format(feat_str, word_str, lemma_str, pos, feats))
             print(u'lemma encoding: {}'.format(lemma))
-        return cls(lemma, lemma_str, word, word_str, pos, feats, feat_str, tag_wraps, vocab)
+        return cls(lemma, lemma_str, word, word_str, pos, feats, feat_str, sample_weight, tag_wraps, vocab)
 
 
 class NonAlignedDataSample(BaseDataSample):
@@ -131,7 +147,8 @@ class BaseDataSet(object):
     @classmethod
     def from_file(cls, filename, vocab, DataSample=BaseDataSample,
                   encoding='utf8', delimiter=u'\t', sigm2017format=True, no_feat_format=False,
-                  pos_emb=True, avm_feat_format=False, tag_wraps='both', verbose=True, **kwargs):
+                  pos_emb=True, avm_feat_format=False, tag_wraps='both', sample_weights=False,
+                  verbose=True, **kwargs):
         # filename (str):   tab-separated file containing morphology reinflection data:
         #                   lemma word feat1;feat2;feat3...
         training_data = True if 'train' in os.path.basename(filename) else False
@@ -142,6 +159,10 @@ class BaseDataSet(object):
         print('Word boundary tags?', tag_wraps)
         print('Verbose?', verbose)
 
+        if not training_data and sample_weights:
+            print('Holdout data: Ignoring weights...')
+            sample_weights = False
+
         if avm_feat_format:
             # check that `avm_feat_format` and `pos_emb` does not clash
             if pos_emb:
@@ -150,9 +171,9 @@ class BaseDataSet(object):
 
         with codecs.open(filename, encoding=encoding) as f:
             for row in f:
-                split_row = row.strip().split(delimiter)
+                split_row = row.replace('\n', '').split(delimiter)
                 sample = DataSample.from_row(vocab, tag_wraps, verbose, split_row,
-                                             sigm2017format, no_feat_format, pos_emb, avm_feat_format)
+                                             sigm2017format, no_feat_format, pos_emb, avm_feat_format, sample_weights)
                 datasamples.append(sample)
 
         return cls(filename=filename, samples=datasamples, vocab=vocab,

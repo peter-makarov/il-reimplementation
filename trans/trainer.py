@@ -284,6 +284,7 @@ class TrainingSession(object):
         bias_inserts       = kwargs['il_bias_inserts']
         pretrain_epochs    = kwargs['il_tforcing_epochs']
         optimal_oracle     = kwargs['il_optimal_oracle']
+        use_sample_weights = kwargs['sample_weights']
 
         print('Using {} roll-in decay schedule with parameters: k={}{}. Will apply decay after {} epoch.'.format(
             decay_schedule, k, ', c = {}'.format(c) if c else '', pretrain_epochs))
@@ -292,6 +293,8 @@ class TrainingSession(object):
                        'global' if global_rollout else 'local',
                        'optimal' if optimal_oracle else 'sub-optimal',
                        ' (insert bias in learned roll-outs)' if bias_inserts else ''))
+        if use_sample_weights:
+            print('Will use sample weights in training.')
         self.model.save(kwargs['tmp_model_path'])
         print('saved initial model to {}'.format(kwargs['tmp_model_path']))
         verbose = kwargs['check_condition']
@@ -321,7 +324,11 @@ class TrainingSession(object):
                     sampling=e,
                     external_cg=True,
                     verbose=verbose)
-                batch_loss.extend(loss)
+                if use_sample_weights:
+                    assert sample.sample_weight, "sample_weight={0}".format(sample.sample_weight)
+                    batch_loss.append(dy.average(loss) * dy.scalarInput(sample.sample_weight))
+                else:
+                    batch_loss.extend(loss)
             batch_loss = -dy.average(batch_loss)
             if l2: batch_loss += l2 * self.transducer.l2_norm(with_embeddings=False)
             loss = batch_loss.scalar_value()  # forward

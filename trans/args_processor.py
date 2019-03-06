@@ -95,6 +95,10 @@ def process_data_arguments(arguments):
     else:
         dset = datasets.EditDataSet
 
+    sample_weights = arguments['--sample-weights']
+    assert not sample_weights or arguments['--mode'] in {'il', 'eval'}, \
+        "Sample weights not supported for all training regimes: --mode=%s" % arguments['--mode']
+
     return {
         'dataset'       : dset,
         'aligner'       : aligner,
@@ -106,7 +110,8 @@ def process_data_arguments(arguments):
         'pos_emb'       : arguments['--pos-emb'],  # @TODO goes into model_params too...
         'avm_feat_format' : arguments['--avm-feat-format'],  # @TODO goes into model_params too...
         'param_tying'   : arguments['--param-tying'],  # @TODO goes into model_params too...
-        'tag_wraps'     : arguments['--tag-wraps'] if arguments['--tag-wraps'] not in NULL_ARGS else None
+        'tag_wraps'     : arguments['--tag-wraps'] if arguments['--tag-wraps'] not in NULL_ARGS else None,
+        'sample_weights': sample_weights,
     }
 
 def process_model_arguments(arguments):

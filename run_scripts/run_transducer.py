@@ -5,7 +5,7 @@ Usage:
   [--transducer=TRANSDUCER] [--sigm2017format] [--no-feat-format]
   [--input=INPUT] [--feat-input=FEAT] [--action-input=ACTION] [--pos-emb] [--avm-feat-format]
   [--enc-hidden=HIDDEN] [--dec-hidden=HIDDEN] [--enc-layers=LAYERS] [--dec-layers=LAYERS]
-  [--vanilla-lstm] [--mlp=MLP] [--nonlin=NONLIN] [--lucky-w=W]
+  [--vanilla-lstm] [--mlp=MLP] [--nonlin=NONLIN] [--lucky-w=W] [--sample-weights]
   [--pretrain-dropout=DROPOUT] [--dropout=DROPOUT] [--l2=L2]
   [--optimization=OPTIMIZATION] [--batch-size=BATCH-SIZE] [--decbatch-size=BATCH-SIZE]
   [--patience=PATIENCE] [--epochs=EPOCHS] [--pick-loss]
@@ -43,6 +43,7 @@ Options:
   --mlp=MLP                     MLP hidden layer dimension. "0" denotes "no hidden layer". [default: 0]
   --nonlin=NONLIN               if mlp, this non-linearity is applied after the hidden layer. ReLU/tanh [default: ReLU]
   --lucky-w=W                   if feat-input==0, scale the "bag-of-features" vector by W [default: 55]
+  --sample-weights              Is the last column of the training file a column of sample weights?
   --dropout=DROPOUT             variotional dropout in decoder RNN [default: 0.5]
   --pretrain-dropout=DROPOUT    if pretraining with MLE, this dropout rate is used, otherwise the rate of '--dropout'
   --optimization=OPTIMIZATION   optimization method ADAM/SGD/ADAGRAD/MOMENTUM/ADADELTA [default: ADADELTA]
@@ -238,6 +239,7 @@ if __name__ == "__main__":
                 il_optimal_oracle=optim_arguments['il-optimal-oracle'],
                 il_beta=optim_arguments['il-beta'],
                 il_global_rollout=optim_arguments['il-global-rollout'],
+                sample_weights=data_arguments['sample_weights'],
                 log_file_path=paths['log_file_path'],
                 tmp_model_path=paths['tmp_model_path'],
                 check_condition=data_arguments['verbose'])

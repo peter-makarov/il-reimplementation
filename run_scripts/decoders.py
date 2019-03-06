@@ -118,7 +118,8 @@ if __name__ == "__main__":
     print(ddoc)
 
     print('Processing arguments...')
-    ddoc.update({'--align-dumb': True, '--mode': 'il', '--try-reverse': False, '--iterations': 0, '--beam-width': 0,
+    ddoc.update({'--align-dumb': True, '--mode': 'il', '--sample-weights': False,
+                 '--try-reverse': False, '--iterations': 0, '--beam-width': 0,
                  '--beam-widths': None, '--dropout': 0, '--pretrain-dropout': False, '--optimization': None, '--l2': 0,
                  '--alpha': 0, '--beta': 0, '--no-baseline': False, '--epochs': 0, '--patience': 0,
                  '--pick-loss': False, '--pretrain-epochs': 0, '--pretrain-until': 0, '--batch-size': 0,
@@ -147,6 +148,7 @@ if __name__ == "__main__":
                    for t in dev_batches[s.word_str]):
             dev_batches[s.word_str].add(s)
     dev_batches = dict(dev_batches)
+    print('Total number of dev batches: ', len(dev_batches))
 
     model = dy.Model()
     transducer = model_arguments['transducer'](model, VOCAB, **model_arguments)
