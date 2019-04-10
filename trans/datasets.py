@@ -171,7 +171,7 @@ class BaseDataSet(object):
 
         with codecs.open(filename, encoding=encoding) as f:
             for row in f:
-                split_row = row.replace('\n', '').split(delimiter)
+                split_row = row.replace('\n', '').replace('\r', '').split(delimiter)
                 sample = DataSample.from_row(vocab, tag_wraps, verbose, split_row,
                                              sigm2017format, no_feat_format, pos_emb, avm_feat_format, sample_weights)
                 datasamples.append(sample)
