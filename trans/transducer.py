@@ -350,6 +350,11 @@ class Transducer(object):
             u', '.join(self.vocab.act.keys())))
         print(u'{} features: {}'.format(self.NUM_FEATS,
             u', '.join(self.vocab.feat.keys())))
+        if self.pos_emb:
+            print(u'{} POS: {}'.format(self.NUM_POS,
+                u', '.join(self.vocab.pos.keys())))
+        else:
+            print('No POS features.')
         print(u'{} lemma chars: {}'.format(self.NUM_CHARS,
             u', '.join(self.vocab.char.keys())))
 

@@ -175,6 +175,8 @@ def process_optimization_arguments(arguments):
         'pretrain-until'     : float(arguments['--pretrain-until']),
         'batch-size'         : int(arguments['--batch-size']),
         'decbatch-size'      : int(arguments['--decbatch-size']),
+        'subsample'          : float(arguments['--dev-subsample']),
+        'stratify-by-pos'    : bool(arguments['--dev-stratify-by-pos']),
         'sample-size'        : int(arguments['--sample-size']),
         'scale-negative'     : float(arguments['--scale-negative']),
         'il-decay'           : arguments['--il-decay'],
