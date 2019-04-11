@@ -136,7 +136,9 @@ def process_model_arguments(arguments):
         'pos_emb'         : arguments['--pos-emb'],
         'avm_feat_format' : arguments['--avm-feat-format'],
         'lucky_w'         : int(arguments.get('--lucky-w', 55)),
-        'param_tying'     : arguments['--param-tying']
+        'param_tying'     : arguments['--param-tying'],
+        'compact_feat_dim': int(arguments['--compact-feat']),
+        'compact_nonlin'  : arguments['--compact-nonlin']
     }
 
 

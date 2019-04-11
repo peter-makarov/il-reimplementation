@@ -4,6 +4,7 @@ Usage:
   run_transducer.py [--dynet-seed SEED] [--dynet-mem MEM] [--dynet-autobatch ON]
   [--transducer=TRANSDUCER] [--sigm2017format] [--no-feat-format]
   [--input=INPUT] [--feat-input=FEAT] [--action-input=ACTION] [--pos-emb] [--avm-feat-format]
+  [--compact-feat=COMPACT-FEAT] [--compact-nonlin=COMP-NONLIN]
   [--enc-hidden=HIDDEN] [--dec-hidden=HIDDEN] [--enc-layers=LAYERS] [--dec-layers=LAYERS]
   [--vanilla-lstm] [--mlp=MLP] [--nonlin=NONLIN] [--lucky-w=W] [--sample-weights]
   [--pretrain-dropout=DROPOUT] [--dropout=DROPOUT] [--l2=L2]
@@ -35,6 +36,9 @@ Options:
   --action-input=ACTION         action embedding dimension [default: 100]
   --pos-emb                     embedding POS (or the first feature in the sequence of features) as a non-atomic feature
   --avm-feat-format             features are treated as an attribute-value matrix (`=` pairs attributes with values)
+  --compact-feat=COMPACT-FEAT   non-linearly map resulting feature vector to this dimension [default: 400]
+  --compact-nonlin=COMP-NONLIN  if compact-feat, apply this non-linearity to compact-feat dimensional feature vector.
+                                    ReLU/tanh/linear [default: linear]
   --enc-hidden=HIDDEN           hidden layer dimension of encoder RNNs [default: 200]
   --enc-layers=LAYERS           number of layers in encoder RNNs [default: 1]
   --dec-hidden=HIDDEN           hidden layer dimension of decoder RNNs [default: 200]
