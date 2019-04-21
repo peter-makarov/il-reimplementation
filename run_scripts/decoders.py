@@ -117,19 +117,18 @@ if __name__ == "__main__":
 
     np.random.seed(42)
     random.seed(42)
-
     ddoc = docopt(__doc__)
-    print(ddoc)
-
     print('Processing arguments...')
-    ddoc.update({'--align-dumb': True, '--mode': 'il', '--sample-weights': False,
-                 '--try-reverse': False, '--iterations': 0, '--beam-width': 0,
+    ddoc.update({'--align-dumb': True, '--mode': 'il', '--sample-weights': False, '--dev-subsample': 0,
+                 '--dev-stratify-by-pos' : False, '--try-reverse': False, '--iterations': 0, '--beam-width': 0,
                  '--beam-widths': None, '--dropout': 0, '--pretrain-dropout': False, '--optimization': None, '--l2': 0,
                  '--alpha': 0, '--beta': 0, '--no-baseline': False, '--epochs': 0, '--patience': 0,
                  '--pick-loss': False, '--pretrain-epochs': 0, '--pretrain-until': 0, '--batch-size': 0,
                  '--decbatch-size': 0, '--sample-size': 0, '--scale-negative': 0, '--il-decay': 0, '--il-k': 0,
                  '--il-tforcing-epochs': 0, '--il-loss': 'nll', '--il-bias-inserts': False, '--il-beta': 1,
                  '--il-global-rollout': False, '--il-optimal-oracle': True})
+    print(ddoc)
+
     arguments = process_arguments(ddoc)
     paths, data_arguments, model_arguments, optim_arguments = arguments
 
