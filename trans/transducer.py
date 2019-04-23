@@ -555,7 +555,7 @@ class Transducer(object):
         return 0.5 * dy.esum(reg)
 
     def transduce(self, lemma, feats, oracle_actions=None, external_cg=True, sampling=False,
-                  unk_avg=True, verbose=False, channel=False):
+                  unk_avg=True, verbose=False, channel=False, inverse_temperature=1.):
         """
         Transduce an encoded lemma and features.
         Args:
@@ -582,6 +582,9 @@ class Transducer(object):
             unk_avg: Whether or not to average all char embeddings to produce UNK embedding
                      (see `self._build_lemma`).
             channel: Used as channel model.
+            inverse_temperature: Smoothing parameter for the sampling distribution (if 0, then uniform probability;
+                if 1., then equals true distribution; if goes to inf, winner-take-all.)
+                Smith & Eisner 2006. "Minimum risk annealing for training log-linear models." In COLING/ACL.
             verbose: Whether or not to report on processing steps.
         """
         # Returns an expression of the loss for the sequence of actions.
@@ -689,7 +692,7 @@ class Transducer(object):
                 log_probs = dy.log_softmax(logits, valid_actions)
                 log_probs_np = log_probs.npvalue()
                 if sampling:
-                    action = sample(log_probs_np)
+                    action = sample(log_probs_np, inverse_temperature)
                 else:
                     action = np.argmax(log_probs_np)
                 losses.append(dy.pick(log_probs, action))

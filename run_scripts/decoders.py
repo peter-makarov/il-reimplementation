@@ -8,11 +8,12 @@ Usage:
   [--enc-hidden=HIDDEN] [--dec-hidden=HIDDEN] [--enc-layers=LAYERS] [--dec-layers=LAYERS]
   [--vanilla-lstm] [--mlp=MLP] [--nonlin=NONLIN] [--lucky-w=W]
   [--tag-wraps=WRAPS] [--param-tying] [--verbose=VERBOSE]
+  [--decoding-mode=MODE] [--dec-temperature=TEMP] [--dec-sample-size=SSIZE] [--dec-keep-sampling]
   TRAIN-PATH DEV-PATH RESULTS-PATH [--test-path=TEST-PATH] [--reload-path=RELOAD-PATH]
 
 Arguments:
   TRAIN-PATH    destination path, possibly relative to "data/all/", e.g. task1/albanian-train-low
-  DEV-PATH      development set path, possibly relative to "data/all/"
+  DEV-PATH      path to dataset to decode, possibly relative to "data/all/"
   RESULTS-PATH  results file to be written, possibly relative to "results"
 
 Options:
@@ -44,7 +45,13 @@ Options:
                                   both (use opening and closing tags)/close (only closing tag)/None [default: both]
   --verbose=VERBOSE             verbose==1: print to stdout processing info, verbose==2: visualize results of internal
                                   evaluation, display train and dev set alignments, costs [default: 0]
-  --test-path=TEST-PATH         test set path
+  --decoding-mode=MODE          Which decoding method to use: sampling/channel [default: channel]
+  --dec-temperature=TEMP        If decoding-mode=="sampling", what inverse temperature to use. By default, sample
+                                  straight from the model. [default: 1]
+  --dec-sample-size=SSIZE       If decoding-mode=="sampling", how many samples to draw per input? [default: 20]
+  --dec-keep-sampling           If decoding-mode=="sampling", whether to keep sampling until the required number of
+                                  unique samples is produced for each input.
+  --test-path=TEST-PATH         path to test dataset to decode
   --reload-path=RELOAD-PATH     reload a pretrained model at this path (possibly relative to RESULTS-PATH)
 """
 from docopt import docopt
@@ -62,12 +69,18 @@ from trans.defaults import UNK
 from collections import defaultdict
 import json
 
-#sys.stdout = codecs.getwriter('utf-8')(sys.__stdout__)
-#sys.stderr = codecs.getwriter('utf-8')(sys.__stderr__)
-#sys.stdin = codecs.getreader('utf-8')(sys.__stdin__)
+ENCODING = 'utf8'
 
 
-def compute_channel(name, batches, transducer, vocab, paths, encoding='utf8'):
+def compute_channel(name, batches, transducer, vocab):
+    """
+    Compute log probabilities (aka channel scores) for pairs of input & output strings plus, possibly, features.
+    :param name: Name of the set of batches (dev or test).
+    :param batches: Batches.
+    :param transducer: Transducer.
+    :param vocab: Vocabulary object.
+    :return: JSON-serializable dictionary of results.
+    """
     then = time.time()
     print('evaluating on {} data...'.format(name))
     output = dict()
@@ -77,6 +90,7 @@ def compute_channel(name, batches, transducer, vocab, paths, encoding='utf8'):
         log_prob = []
         pred_acts = []
         candidates = []
+        features = []
         for sample in batch:
             # @TODO one could imagine to draw multiple samples (then sampling=True)....
             feats = sample.pos, sample.feats
@@ -100,16 +114,74 @@ def compute_channel(name, batches, transducer, vocab, paths, encoding='utf8'):
             pred_acts.append(action2string(predicted_actions, vocab))
             log_prob.append(dy.esum(loss).value())  # sum log probabilities of actions
             candidates.append(sample.lemma_str)
-        results = {'candidates': candidates, 'log_prob': log_prob, 'acts': pred_acts}
+            features.append(sample.feat_str)
+        results = {'candidates': candidates, 'log_prob': log_prob, 'acts': pred_acts, 'feats': features}
         output[sample.word_str] = results
         if j > 0 and j % 100 == 0:
             print('\t\t...{} batches'.format(j))
     print('\t...finished in {:.3f} sec'.format(time.time() - then))
+    return output
 
-    path = os.path.join(paths['results_file_path'], name + '_channel.json')
-    print('Writing results to file "{path}".'.format(path=path))
-    with open(path, 'w', encoding=encoding) as w:
-        json.dump(output, w, indent=4)
+
+def sample(name, batches, inverse_temperature, sample_size, transducer, vocab, keep_sampling_until_sample_size):
+    """
+    Sample output strings from the model given some input string and possibly features. Possibly, use
+    `inverse_temperature` (if approaches 0, then it "flattens" the sampling distribution) and produce exactly
+    `sample_size` output strings if `keep_sampling_until_sample_size` is set to True.
+    :param name: Name of the set of batches (dev or test).
+    :param batches: Batches.
+    :param inverse_temperature: Smoothing parameter for the sampling distribution (if 0, then uniform probability;
+        if 1., then equals true distribution; if goes to inf, winner-take-all.)
+    :param sample_size: Number of output strings or draws per input.
+    :param keep_sampling_until_sample_size: Whether to keep sampling until `sample_size` output strings are sampled
+        per each input or stop after `sample_size` draws from the model.
+    :param transducer: Transducer.
+    :param vocab: Vocabulary object.
+    :return: JSON-serializable dictionary of results.
+    """
+    then = time.time()
+    print('sampling for {} data...'.format(name))
+    print('For each sample, will sample {} {} distinct output sequences. '
+          'Using alpha("inverse temperature")={}.'.format(
+            "exactly" if keep_sampling_until_sample_size else "at most", sample_size, inverse_temperature))
+    output = dict()
+    for j, batch in enumerate(batches):
+        dy.renew_cg()
+        for sample in batch:
+            #print(j, 'Sample: ', sample.word_str)
+            feats = sample.pos, sample.feats
+            log_prob = []
+            pred_acts = []
+            candidates = []
+            features = []
+            if keep_sampling_until_sample_size is False:
+                counter = sample_size
+            else:
+                counter = 0
+            T = inverse_temperature
+            while ((not keep_sampling_until_sample_size or len(candidates) < sample_size) and
+                   (keep_sampling_until_sample_size or counter > 0)):
+                if counter < 0 and counter % 100 == 0:
+                    T -= T / 10
+                    #print('Sampling the same things all the time. Decreasing alpha slightly to', T)
+                loss, prediction, predicted_actions = \
+                    transducer.transduce(sample.lemma, feats, sampling=True,
+                                         inverse_temperature=T,
+                                         external_cg=True)
+                counter -= 1
+                if predicted_actions not in pred_acts:
+                    log_prob.append(dy.esum(loss).value())  # N.B. not affected by inverse_temperature
+                    pred_acts.append(predicted_actions)
+                    candidates.append(prediction)
+                    features.append(sample.feat_str)
+                    #print('Draw: ', prediction, action2string(predicted_actions, vocab))
+            results = {'candidates': candidates, 'log_prob': log_prob,
+                       'acts': [action2string(pa, vocab) for pa in pred_acts], 'feats': features}
+            output[sample.lemma_str] = results
+        # report progress
+        if j > 0 and j % 50 == 0:
+            print('\t\t...{} batches'.format(j))
+    print('\t...finished in {:.3f} sec'.format(time.time() - then))
     return output
 
 
@@ -133,6 +205,7 @@ if __name__ == "__main__":
     paths, data_arguments, model_arguments, optim_arguments = arguments
 
     print('Loading data... Dataset: {}'.format(data_arguments['dataset']))
+    # @TODO get rid of train_data entirely: VOCAB must be loaded from file
     train_data = data_arguments['dataset'].from_file(paths['train_path'],
                                                      results_file_path=paths['results_file_path'],
                                                      **data_arguments)
@@ -140,28 +213,59 @@ if __name__ == "__main__":
     VOCAB.train_cutoff()  # knows that entities before come from train set
     dev_data = data_arguments['dataset'].from_file(paths['dev_path'], vocab=VOCAB, **data_arguments)
     if paths['test_path']:
-        # no alignments, hence BaseDataSet
-        test_data = BaseDataSet.from_file(paths['test_path'], vocab=VOCAB, **data_arguments)
-    else:
-        test_data = None
-
-    dev_batches = defaultdict(set)
-    for s in dev_data.samples:
-        if not any(t.lemma == s.lemma and t.actions == s.actions and t.pos == s.pos and t.feats == s.feats
-                   for t in dev_batches[s.word_str]):
-            dev_batches[s.word_str].add(s)
-    dev_batches = dict(dev_batches)
-    print('Total number of dev batches: ', len(dev_batches))
+        print('***TEST DECODING not supported. Run this script with DEV-PATH set to test set.')
+    #     # no alignments, hence BaseDataSet
+    #     test_data = BaseDataSet.from_file(paths['test_path'], vocab=VOCAB, **data_arguments)
+    # else:
+    #     test_data = None
 
     model = dy.Model()
     transducer = model_arguments['transducer'](model, VOCAB, **model_arguments)
     print('Trying to load model from: {}'.format(paths['tmp_model_path']))
     model.populate(paths['tmp_model_path'])
-    compute_channel('dev', dev_batches, transducer, VOCAB, paths)
-    if test_data:
-        print('=========TEST EVALUATION:=========')
-        test_batches = defaultdict(set)
-        for s in test_data.samples:
-            test_batches[s.word_str].add(s)
-        test_batches = dict(test_batches)
-        compute_channel('test', test_batches, transducer, VOCAB, paths)
+
+    if ddoc['--decoding-mode'] == 'channel':
+        print('Decoding with a channel model...')
+
+        dev_batches = defaultdict(set)
+        for s in dev_data.samples:
+            if not any(t.lemma == s.lemma and t.actions == s.actions and t.pos == s.pos and t.feats == s.feats
+                       for t in dev_batches[s.word_str]):
+                dev_batches[s.word_str].add(s)
+        dev_batches = dict(dev_batches)
+        print('Total number of dev batches: ', len(dev_batches))
+
+        dev_output = compute_channel('dev', dev_batches, transducer, VOCAB)
+        fname = 'dev_channel.json'
+
+    elif ddoc['--decoding-mode'] == 'sampling':
+        print('Decoding by sampling...')
+
+        inverse_temperature = float(ddoc['--dec-temperature'])
+        sample_size = int(ddoc['--dec-sample-size'])
+        keep_sampling_until_sample_size = ddoc['--dec-keep-sampling']
+        # normal dev samples
+        decbatch_size = 1  # @TODO not making this a command-line parameter: Keep comp. graph as small as possible.
+        dev_batches = [dev_data.samples[i:i + decbatch_size] for i in range(0, len(dev_data), decbatch_size)]
+        print('Total number of dev batches: ', len(dev_batches))
+
+        dev_output = sample('dev', dev_batches, inverse_temperature, sample_size, transducer, VOCAB,
+                            keep_sampling_until_sample_size)
+        fname = 'dev_samples.json'
+
+    else:
+        raise NotImplementedError('Other decoding methods not supported '
+                                  '(for beam-search, use eval mode of run_transducer.py).')
+
+    path = os.path.join(paths['results_file_path'], fname)
+    print('Writing results to file "{path}".'.format(path=path))
+    with open(path, 'w', encoding=ENCODING) as w:
+        json.dump(dev_output, w, indent=4)
+
+    # if test_data:
+    #     print('=========TEST EVALUATION:=========')
+    #     test_batches = defaultdict(set)
+    #     for s in test_data.samples:
+    #         test_batches[s.word_str].add(s)
+    #     test_batches = dict(test_batches)
+    #     compute_channel('test', test_batches, transducer, VOCAB)
