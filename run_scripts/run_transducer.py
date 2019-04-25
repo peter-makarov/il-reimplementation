@@ -4,10 +4,12 @@ Usage:
   run_transducer.py [--dynet-seed SEED] [--dynet-mem MEM] [--dynet-autobatch ON]
   [--transducer=TRANSDUCER] [--sigm2017format] [--no-feat-format]
   [--input=INPUT] [--feat-input=FEAT] [--action-input=ACTION] [--pos-emb] [--avm-feat-format]
+  [--compact-feat=COMPACT-FEAT] [--compact-nonlin=COMP-NONLIN]
   [--enc-hidden=HIDDEN] [--dec-hidden=HIDDEN] [--enc-layers=LAYERS] [--dec-layers=LAYERS]
   [--vanilla-lstm] [--mlp=MLP] [--nonlin=NONLIN] [--lucky-w=W] [--sample-weights]
   [--pretrain-dropout=DROPOUT] [--dropout=DROPOUT] [--l2=L2]
   [--optimization=OPTIMIZATION] [--batch-size=BATCH-SIZE] [--decbatch-size=BATCH-SIZE]
+  [--dev-subsample=SUBSAMPLE] [--dev-stratify-by-pos]
   [--patience=PATIENCE] [--epochs=EPOCHS] [--pick-loss]
   [--align-smart | --align-dumb | --align-cls] [--tag-wraps=WRAPS] [--try-reverse | --iterations=ITERATIONS]
   [--param-tying] [--mode=MODE] [--verbose=VERBOSE] [--beam-width=WIDTH] [--beam-widths=WIDTHS]
@@ -35,6 +37,9 @@ Options:
   --action-input=ACTION         action embedding dimension [default: 100]
   --pos-emb                     embedding POS (or the first feature in the sequence of features) as a non-atomic feature
   --avm-feat-format             features are treated as an attribute-value matrix (`=` pairs attributes with values)
+  --compact-feat=COMPACT-FEAT   non-linearly map resulting feature vector to this dimension [default: 400]
+  --compact-nonlin=COMP-NONLIN  if compact-feat, apply this non-linearity to compact-feat dimensional feature vector.
+                                    ReLU/tanh/linear [default: linear]
   --enc-hidden=HIDDEN           hidden layer dimension of encoder RNNs [default: 200]
   --enc-layers=LAYERS           number of layers in encoder RNNs [default: 1]
   --dec-hidden=HIDDEN           hidden layer dimension of decoder RNNs [default: 200]
@@ -51,6 +56,9 @@ Options:
                                     [default: 0]
   --batch-size=BATCH-SIZE       batch size [default: 1]
   --decbatch-size=BATCH-SIZE    batch size for decoding [default: 1]
+  --dev-subsample=SUBSAMPLE     whether to subsample dev samples uniformly at random. "0" means take full dev set.
+                                    [default: 0]
+  --dev-stratify-by-pos         if dev-subsample > 0, whether to do stratified subsampling of dev samples.
   --patience=PATIENCE           maximal patience for early stopping [default: 10]
   --epochs=EPOCHS               number of training epochs [default: 30]
   --pick-loss                   best model should have the highest dev loss (and not dev accuracy)
@@ -153,7 +161,8 @@ if __name__ == "__main__":
 
         training_session = TrainingSession(model, transducer, VOCAB,
             train_data, dev_data, optim_arguments['batch-size'],  # train batchsize
-            optim_arguments['optimizer'], batch_size, dev_batches)
+            optim_arguments['optimizer'], batch_size, dev_batches,
+            optim_arguments['subsample'], optim_arguments['stratify-by-pos'])
 
         if paths['reload_path']:
             training_session.reload(paths['reload_path'], paths['tmp_model_path'])

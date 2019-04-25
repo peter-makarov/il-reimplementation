@@ -7,7 +7,7 @@ from trans.defaults import COPY, DELETE, BEGIN_WORD, END_WORD, UNK, MAX_ACTION_S
 from trans.stack_lstms import Encoder
 from trans.datasets import action2string, lemma2string
 
-NONLINS = {'tanh' : dy.tanh, 'ReLU' : dy.rectify}
+NONLINS = {'tanh' : dy.tanh, 'ReLU' : dy.rectify, 'linear' : lambda e: e}
 
 def log_softmax_costs(logits, costs=None, valid_actions=None):
     """Compute log softmax-margin with arbitrary costs."""
@@ -315,7 +315,7 @@ class Transducer(object):
                  enc_hidden_dim=200, enc_layers=1, dec_hidden_dim=200, dec_layers=1,
                  vanilla_lstm=False, mlp_dim=0, nonlin='ReLU', lucky_w=55,
                  double_feats=False, param_tying=False, pos_emb=True, 
-                 avm_feat_format=False, **kwargs):
+                 avm_feat_format=False, compact_feat_dim=400, compact_nonlin='linear', **kwargs):
         
         self.CHAR_DIM       = char_dim
         self.ACTION_DIM     = action_dim
@@ -326,12 +326,14 @@ class Transducer(object):
         self.DEC_LAYERS     = dec_layers
         self.LSTM           = dy.VanillaLSTMBuilder if vanilla_lstm else dy.CoupledLSTMBuilder
         self.MLP_DIM        = mlp_dim
-        self.NONLIN         = NONLINS.get(nonlin, 'ReLU')
+        self.NONLIN         = NONLINS[nonlin]
         self.LUCKY_W        = lucky_w
         self.double_feats   = double_feats
         self.param_tying    = param_tying
         self.pos_emb        = pos_emb
         self.avm_feat_format = avm_feat_format
+        self.COMPACT_FEAT_DIM = compact_feat_dim
+        self.COMPACT_NONLIN = NONLINS[compact_nonlin]
 
         self.vocab = vocab
 
@@ -348,6 +350,11 @@ class Transducer(object):
             u', '.join(self.vocab.act.keys())))
         print(u'{} features: {}'.format(self.NUM_FEATS,
             u', '.join(self.vocab.feat.keys())))
+        if self.pos_emb:
+            print(u'{} POS: {}'.format(self.NUM_POS,
+                u', '.join(self.vocab.pos.keys())))
+        else:
+            print('No POS features.')
         print(u'{} lemma chars: {}'.format(self.NUM_CHARS,
             u', '.join(self.vocab.char.keys())))
 
@@ -373,7 +380,9 @@ class Transducer(object):
                             'NONLIN'         : self.NONLIN,
                             'PARAM_TYING'    : self.param_tying,
                             'POS_EMB'        : self.pos_emb,
-                            'AVM_FEATS'      : self.avm_feat_format}
+                            'AVM_FEATS'      : self.avm_feat_format,
+                            'COMPACT_FEATS_DIM' : self.COMPACT_FEAT_DIM,
+                            'COMPACT_NINLIN' : self.COMPACT_NONLIN}
 
     def _features(self, model):
         # trainable embeddings for characters and actions
@@ -404,6 +413,11 @@ class Transducer(object):
                 else:
                     self.FEAT_INPUT_DIM = (self.NUM_FEATS - 1)*self.FEAT_DIM  # -1 for UNK
                     print('Every feature-value pair is taken to be atomic.')
+            if self.COMPACT_FEAT_DIM:
+                # reducing the dimensionality of feature vector
+                self.pW_feat_transform = model.add_parameters((self.COMPACT_FEAT_DIM, self.FEAT_INPUT_DIM))
+                self.pb_feat_transform = model.add_parameters(self.COMPACT_FEAT_DIM)
+                self.FEAT_INPUT_DIM = self.COMPACT_FEAT_DIM
 
         # BiLSTM encoding lemma
         self.fbuffRNN  = self.LSTM(self.ENC_LAYERS, self.CHAR_DIM, self.ENC_HIDDEN_DIM, model)
@@ -427,7 +441,7 @@ class Transducer(object):
             print(' * ACTION EMBEDDINGS: IN-DIM: {}, OUT-DIM: {}'.format(self.NUM_ACTS, self.ACTION_DIM))
         if self.FEAT_DIM:
             print(' * FEAT. EMBEDDINGS:  IN-DIM: {}, OUT-DIM: {}'.format(self.NUM_FEATS, self.FEAT_DIM))
-
+        print(' * FEAT. VECTOR DIM:  {} {}'.format(self.FEAT_INPUT_DIM, '(COMPACTED)' if self.COMPACT_FEAT_DIM else ''))
             
     def _classifier(self, model):
         # single-hidden-layer classifier that works on feature presentation
@@ -496,6 +510,11 @@ class Transducer(object):
                         feat_vecs.append(self.FEAT_LOOKUP[UNK])
 
             feats_enc = dy.concatenate(feat_vecs)
+            if self.COMPACT_FEAT_DIM:
+                # make features compacter (a la Wu & Cotterell 2019)
+                W_feat_transform = dy.parameter(self.pW_feat_transform)
+                b_feat_transform = dy.parameter(self.pb_feat_transform)
+                feats_enc = self.COMPACT_NONLIN(W_feat_transform * feats_enc + b_feat_transform)
         else:
             # (upweighted) bag-of-features
             nhot = np.zeros(self.FEAT_INPUT_DIM)
@@ -536,7 +555,7 @@ class Transducer(object):
         return 0.5 * dy.esum(reg)
 
     def transduce(self, lemma, feats, oracle_actions=None, external_cg=True, sampling=False,
-                  unk_avg=True, verbose=False, channel=False):
+                  unk_avg=True, verbose=False, channel=False, inverse_temperature=1.):
         """
         Transduce an encoded lemma and features.
         Args:
@@ -563,6 +582,9 @@ class Transducer(object):
             unk_avg: Whether or not to average all char embeddings to produce UNK embedding
                      (see `self._build_lemma`).
             channel: Used as channel model.
+            inverse_temperature: Smoothing parameter for the sampling distribution (if 0, then uniform probability;
+                if 1., then equals true distribution; if goes to inf, winner-take-all.)
+                Smith & Eisner 2006. "Minimum risk annealing for training log-linear models." In COLING/ACL.
             verbose: Whether or not to report on processing steps.
         """
         # Returns an expression of the loss for the sequence of actions.
@@ -670,7 +692,7 @@ class Transducer(object):
                 log_probs = dy.log_softmax(logits, valid_actions)
                 log_probs_np = log_probs.npvalue()
                 if sampling:
-                    action = sample(log_probs_np)
+                    action = sample(log_probs_np, inverse_temperature)
                 else:
                     action = np.argmax(log_probs_np)
                 losses.append(dy.pick(log_probs, action))

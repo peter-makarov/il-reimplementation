@@ -136,7 +136,9 @@ def process_model_arguments(arguments):
         'pos_emb'         : arguments['--pos-emb'],
         'avm_feat_format' : arguments['--avm-feat-format'],
         'lucky_w'         : int(arguments.get('--lucky-w', 55)),
-        'param_tying'     : arguments['--param-tying']
+        'param_tying'     : arguments['--param-tying'],
+        'compact_feat_dim': int(arguments['--compact-feat']),
+        'compact_nonlin'  : arguments['--compact-nonlin']
     }
 
 
@@ -173,6 +175,8 @@ def process_optimization_arguments(arguments):
         'pretrain-until'     : float(arguments['--pretrain-until']),
         'batch-size'         : int(arguments['--batch-size']),
         'decbatch-size'      : int(arguments['--decbatch-size']),
+        'subsample'          : float(arguments['--dev-subsample']),
+        'stratify-by-pos'    : bool(arguments['--dev-stratify-by-pos']),
         'sample-size'        : int(arguments['--sample-size']),
         'scale-negative'     : float(arguments['--scale-negative']),
         'il-decay'           : arguments['--il-decay'],

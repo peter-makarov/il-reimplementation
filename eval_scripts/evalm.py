@@ -105,7 +105,7 @@ def read_file(file_in, is_format2016=False, merge_same_keys=False):
             linest = line.strip()
             l = linest.split('\t')  # whitespace is a char!
             if len(l) != 3:
-                print('Deleted too much!')
+                #print('Deleted too much!')
                 l = l + ['']*(3-len(l))
             guess_id = [l[k] for k in key_ids]
             if merge_same_keys:

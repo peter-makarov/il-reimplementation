@@ -2,6 +2,7 @@ import time
 import random
 import progressbar
 import editdistance
+from collections import defaultdict
 import dynet as dy
 import numpy as np
 
@@ -159,7 +160,9 @@ class TrainingSession(object):
                  batch_size,
                  optimizer=None,
                  decbatch_size=None,
-                 dev_batches=None):
+                 dev_batches=None,
+                 subsample=0.,
+                 stratify_by_pos=False):
 
         self.model = model
         self.transducer = transducer
@@ -180,6 +183,14 @@ class TrainingSession(object):
         if self.dev_batches is None:
             self.dev_batches = [self.dev_data.samples[i:i+self.decbatch_size]
                 for i in range(0, self.dev_len, self.decbatch_size)]
+
+        # SUBSAMPLE DEV
+        assert isinstance(subsample, float) and 0 <= subsample < 1
+        self.subsample = subsample
+        self.stratify_by_pos = stratify_by_pos
+        if self.subsample:
+            print('Will perform {}pos-stratified subsampling of dev samples at random with probability {}.'.format(
+                '' if self.stratify_by_pos else 'non-', self.subsample))
 
         sanity_size = min(SANITY_SIZE, len(self.train_data))
         self.sanity_batches = [self.train_data.samples[:sanity_size][i:i+self.decbatch_size]
@@ -224,8 +235,28 @@ class TrainingSession(object):
 
     def dev_eval(self, check_condition=True):
         # call internal_eval with dev batches
+        if self.subsample:
+            # repack dev batches to evaluate only on `subsample`-portion of dev samples
+            if self.stratify_by_pos:
+                subsampled = []
+                pos_strata = defaultdict(list)
+                for s in self.dev_data.samples:
+                    pos_strata[s.pos].append(s)
+                pos_strata = dict(pos_strata)
+                for pos, stratum in pos_strata.items():
+                    stratum_sample = np.random.choice(stratum, size=round(len(stratum) * self.subsample))
+                    subsampled.extend(stratum_sample)
+                    print(pos, 'number of items: ', len(stratum), len(stratum_sample))
+            else:
+                subsampled = [s for s in self.dev_data.samples if np.random.rand() < self.subsample]
+            print('Sampled {} dev samples...'.format(len(subsampled)))
+            dev_batches = [subsampled[i:i + self.decbatch_size]
+                           for i in range(0, len(subsampled), self.decbatch_size)]
+        else:
+            dev_batches = self.dev_batches
+
         dev_accuracy, avg_dev_loss, _, self.dev_predicted_actions = \
-            internal_eval(self.dev_batches, self.transducer, self.vocab,
+            internal_eval(dev_batches, self.transducer, self.vocab,
                           self.dev_predicted_actions,
                           check_condition=check_condition, name='dev')
         return dev_accuracy, avg_dev_loss
@@ -288,7 +319,7 @@ class TrainingSession(object):
 
         print('Using {} roll-in decay schedule with parameters: k={}{}. Will apply decay after {} epoch.'.format(
             decay_schedule, k, ', c = {}'.format(c) if c else '', pretrain_epochs))
-        print ('Using {} loss and beta={} ({}) to mix reference and learned roll-outs. Reference policy is {}{}.'
+        print('Using {} loss and beta={} ({}) to mix reference and learned roll-outs. Reference policy is {}{}.'
                .format(loss_expression, rollout_mixin_beta,
                        'global' if global_rollout else 'local',
                        'optimal' if optimal_oracle else 'sub-optimal',
