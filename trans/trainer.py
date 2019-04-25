@@ -325,7 +325,7 @@ class TrainingSession(object):
                     external_cg=True,
                     verbose=verbose)
                 if use_sample_weights:
-                    assert sample.sample_weight, "sample_weight={0}".format(sample.sample_weight)
+                    assert sample.sample_weight, ("sample_weight={0}".format(sample.sample_weight), sample)
                     batch_loss.append(dy.average(loss) * dy.scalarInput(sample.sample_weight))
                 else:
                     batch_loss.extend(loss)
@@ -680,6 +680,9 @@ class TrainingSession(object):
                 self.best_train_accuracy = train_accuracy
 
             patience += 1
+
+            print('Saving this epoch\'s model...')
+            self.model.save(tmp_model_path + '_e{}'.format(epoch))
 
             # EVALUATE MODEL ON DEV
             dev_accuracy, avg_dev_loss = self.dev_eval(check_condition(epoch))

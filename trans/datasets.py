@@ -30,8 +30,8 @@ class BaseDataSample(object):
         self.tag_wraps = tag_wraps  # were lemma / word wrapped with word boundary tags '<' and '>'?
 
     def __repr__(self):
-        return u'Lemma: {}, Word: {}, Features: {}, Wraps: {}'.format(self.lemma_str,
-            self.word_str, self.feat_repr, self.tag_wraps)
+        return u'Lemma: {}, Word: {}, Features: {}, Weight: {}, Wraps: {}'.format(self.lemma_str,
+            self.word_str, self.feat_repr, self.sample_weight, self.tag_wraps)
 
     @classmethod
     def from_row(cls, vocab, tag_wraps, verbose, row, sigm2017format=True,
@@ -43,6 +43,7 @@ class BaseDataSample(object):
                 if sample_weights:
                     lemma_str, word_str, feat_str, sample_weight = row
                     sample_weight = float(sample_weight)
+                    assert sample_weight, row
                 else:
                     lemma_str, word_str, *feat_str = row
                     feat_str = feat_str[0]
