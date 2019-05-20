@@ -9,6 +9,7 @@ Usage:
   [--vanilla-lstm] [--mlp=MLP] [--nonlin=NONLIN] [--lucky-w=W]
   [--tag-wraps=WRAPS] [--param-tying] [--verbose=VERBOSE]
   [--decoding-mode=MODE] [--dec-temperature=TEMP] [--dec-sample-size=SSIZE] [--dec-keep-sampling]
+  [--result-fn-suffix=SUFFIX]
   TRAIN-PATH DEV-PATH RESULTS-PATH [--test-path=TEST-PATH] [--reload-path=RELOAD-PATH]
 
 Arguments:
@@ -51,6 +52,7 @@ Options:
   --dec-sample-size=SSIZE       If decoding-mode=="sampling", how many samples to draw per input? [default: 20]
   --dec-keep-sampling           If decoding-mode=="sampling", whether to keep sampling until the required number of
                                   unique samples is produced for each input.
+  --result-fn-suffix=SUFFIX     Add the given suffix to the result file. Defaults to the empty string. [default: ]
   --test-path=TEST-PATH         path to test dataset to decode
   --reload-path=RELOAD-PATH     reload a pretrained model at this path (possibly relative to RESULTS-PATH)
 """
@@ -198,7 +200,7 @@ if __name__ == "__main__":
                  '--pick-loss': False, '--pretrain-epochs': 0, '--pretrain-until': 0, '--batch-size': 0,
                  '--decbatch-size': 0, '--sample-size': 0, '--scale-negative': 0, '--il-decay': 0, '--il-k': 0,
                  '--il-tforcing-epochs': 0, '--il-loss': 'nll', '--il-bias-inserts': False, '--il-beta': 1,
-                 '--il-global-rollout': False, '--il-optimal-oracle': True})
+                 '--il-global-rollout': False, '--il-optimal-oracle': True, 'DECODERS': True})
     print(ddoc)
 
     arguments = process_arguments(ddoc)
@@ -206,8 +208,7 @@ if __name__ == "__main__":
 
     print('Loading data... Dataset: {}'.format(data_arguments['dataset']))
     # @TODO get rid of train_data entirely: VOCAB must be loaded from file
-    train_data = data_arguments['dataset'].from_file(paths['train_path'],
-                                                     results_file_path=paths['results_file_path'],
+    train_data = data_arguments['dataset'].from_file(paths['train_path'], reload_path=paths['reload_path'],
                                                      **data_arguments)
     VOCAB = train_data.vocab
     VOCAB.train_cutoff()  # knows that entities before come from train set
@@ -221,8 +222,8 @@ if __name__ == "__main__":
 
     model = dy.Model()
     transducer = model_arguments['transducer'](model, VOCAB, **model_arguments)
-    print('Trying to load model from: {}'.format(paths['tmp_model_path']))
-    model.populate(paths['tmp_model_path'])
+    print('Trying to load model from: {}'.format(paths['reload_model_path']))
+    model.populate(paths['reload_model_path'])
 
     if ddoc['--decoding-mode'] == 'channel':
         print('Decoding with a channel model...')
@@ -236,7 +237,7 @@ if __name__ == "__main__":
         print('Total number of dev batches: ', len(dev_batches))
 
         dev_output = compute_channel('dev', dev_batches, transducer, VOCAB)
-        fname = 'dev_channel.json'
+        fname = 'dev_channel{}.json'.format(ddoc['--result-fn-suffix'])
 
     elif ddoc['--decoding-mode'] == 'sampling':
         print('Decoding by sampling...')
@@ -251,7 +252,7 @@ if __name__ == "__main__":
 
         dev_output = sample('dev', dev_batches, inverse_temperature, sample_size, transducer, VOCAB,
                             keep_sampling_until_sample_size)
-        fname = 'dev_samples.json'
+        fname = 'dev_samples{}.json'.format(ddoc['--result-fn-suffix'])
 
     else:
         raise NotImplementedError('Other decoding methods not supported '

@@ -138,7 +138,7 @@ if __name__ == "__main__":
     paths, data_arguments, model_arguments, optim_arguments = arguments
 
     print('Loading data... Dataset: {}'.format(data_arguments['dataset']))
-    train_data = data_arguments['dataset'].from_file(paths['train_path'], results_file_path=paths['results_file_path'],
+    train_data = data_arguments['dataset'].from_file(paths['train_path'], reload_path=paths['reload_path'],
                                                      **data_arguments)
     VOCAB = train_data.vocab
     VOCAB.train_cutoff(paths['results_file_path'])  # knows that entities before come from train set
@@ -165,7 +165,7 @@ if __name__ == "__main__":
             optim_arguments['subsample'], optim_arguments['stratify-by-pos'])
 
         if paths['reload_path']:
-            training_session.reload(paths['reload_path'], paths['tmp_model_path'])
+            training_session.reload(paths['reload_model_path'], paths['tmp_model_path'])
 
         if (optim_arguments['pretrain-epochs'] or optim_arguments['pretrain-until']) and \
             optim_arguments['mode'] != 'ss':

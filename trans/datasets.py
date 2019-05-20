@@ -186,11 +186,11 @@ class NonAlignedDataSet(BaseDataSet):
     @classmethod
     def from_file(cls, filename, vocab=None, pos_emb=True, avm_feat_format=False,
                   param_tying=False, **kwargs):
-        print('RELOAD PATH', kwargs.get('results_file_path'))
+        print('RELOAD PATH: ', kwargs.get('reload_path'))
         if vocab:
             assert isinstance(vocab, EditVocab)
-        elif kwargs.get('results_file_path') and os.path.exists(os.path.join(kwargs['results_file_path'], 'vocab.json')):
-            path2vocab = os.path.join(kwargs['results_file_path'], 'vocab.json')
+        elif kwargs.get('reload_path') and os.path.exists(os.path.join(kwargs['reload_path'], 'vocab.json')):
+            path2vocab = os.path.join(kwargs['reload_path'], 'vocab.json')
             print('Loading vocab from file: ', path2vocab)
             with open(path2vocab, 'r', encoding='utf8') as f:
                 vocab = EditVocab.from_json(json.load(f))
@@ -271,11 +271,11 @@ class MinimalDataSet(AlignedDataSet):
     @classmethod
     def from_file(cls, filename, vocab=None, pos_emb=True, avm_feat_format=False,
                   param_tying=False, **kwargs):
-        print('RELOAD PATH', kwargs.get('results_file_path'))
+        print('RELOAD PATH', kwargs.get('reload_path'))
         if vocab:
             assert isinstance(vocab, MinimalVocab)
-        elif kwargs.get('results_file_path') and os.path.exists(os.path.join(kwargs['results_file_path'], 'vocab.json')):
-            path2vocab = os.path.join(kwargs['results_file_path'], 'vocab.json')
+        elif kwargs.get('reload_path') and os.path.exists(os.path.join(kwargs['reload_path'], 'vocab.json')):
+            path2vocab = os.path.join(kwargs['reload_path'], 'vocab.json')
             print('Loading vocab from file: ', path2vocab)
             with open(path2vocab, 'r', encoding='utf8') as f:
                 vocab = MinimalVocab.from_json(json.load(f))
@@ -409,11 +409,11 @@ class EditDataSet(AlignedDataSet):
     @classmethod
     def from_file(cls, filename, vocab=None, pos_emb=True, avm_feat_format=False,
                   param_tying=False, **kwargs):
-        print('RELOAD PATH', kwargs.get('results_file_path'))
+        print('RELOAD PATH', kwargs.get('reload_path'))
         if vocab:
             assert isinstance(vocab, EditVocab)
-        elif kwargs.get('results_file_path') and os.path.exists(os.path.join(kwargs['results_file_path'], 'vocab.json')):
-            path2vocab = os.path.join(kwargs['results_file_path'], 'vocab.json')
+        elif kwargs.get('reload_path') and os.path.exists(os.path.join(kwargs['reload_path'], 'vocab.json')):
+            path2vocab = os.path.join(kwargs['reload_path'], 'vocab.json')
             print('Loading vocab from file: ', path2vocab)
             with open(path2vocab, 'r', encoding='utf8') as f:
                 vocab = EditVocab.from_json(json.load(f))

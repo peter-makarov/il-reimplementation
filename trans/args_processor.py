@@ -50,24 +50,24 @@ def process_paths(arguments):
     dev_output  = lambda dec: os.path.join(results_file_path, 'f.{}.dev.'.format(dec))
     test_output = lambda dec: os.path.join(results_file_path, 'f.{}.test.'.format(dec))
 
-    if arguments['--reload-path'] == 'self':
+    if arguments['--reload-path']:
+        # assume that reload path is relative to `RESULTS_PATH`
+        # it's some possibly differently named model
+        reload_model_path = None
+        reload_path = check_path(arguments['--reload-path'], 'RESULTS_PATH', is_data_path=False, create=False)
+        for p in os.listdir(reload_path):
+            if p.endswith('model'):
+                reload_model_path = os.path.join(reload_path, p)
+                break
+        if not reload_model_path:
+            Exception('Failed to find the model at this path: {}'.format(reload_path))
+    elif arguments['--reload-path'] == 'self' or arguments['--mode'] == 'eval' or 'DECODERS' in arguments:
         # flag to reload from result directory
-        reload_path = tmp_model_path
-    # @TODO The semantics of this needs to be clarified
-    # elif arguments['--reload-path']:
-    #     # reload path is relative to `RESULTS_PATH`
-    #     # it's some possibly differently named model
-    #     reload_path = None
-    #     reload_dir = check_path(arguments['--reload-path'],
-    #         'RESULTS_PATH', is_data_path=False, create=False)
-    #     for p in os.listdir(reload_dir):
-    #         if p.endswith('model'):
-    #             reload_path = os.path.join(reload_dir, p)
-    #             break
-    #     if not reload_path:
-    #         print('Failed to find the model at this path: {}'.format(reload_dir))
-    #         print('Will skip model reload.')
+        reload_path = results_file_path
+        reload_model_path = tmp_model_path
+        print('Reloading model and vocabularies from the result directory: ', results_file_path)
     else:
+        reload_model_path = None
         reload_path = None
 
     return dict(lang=lang, regime=regime,
@@ -76,7 +76,7 @@ def process_paths(arguments):
                 tmp_model_path=tmp_model_path, log_file_path=log_file_path,
                 stats_file_path=stats_file_path,
                 dev_output=dev_output, test_output=test_output,
-                reload_path=reload_path)
+                reload_model_path=reload_model_path, reload_path=reload_path)
 
 
 def process_data_arguments(arguments):
@@ -90,7 +90,7 @@ def process_data_arguments(arguments):
 
     if arguments['--transducer'] == 'hard':
         dset = datasets.MinimalDataSet
-    elif arguments['--mode'] == 'il':
+    elif arguments['--mode'] in {'il', 'eval'}:
         dset = datasets.NonAlignedDataSet
     else:
         dset = datasets.EditDataSet
@@ -205,6 +205,7 @@ def process_arguments(arguments, verbose=True):
         print('Dev path:     {}'.format(paths['dev_path']))
         print('Test path:    {}'.format(paths['test_path']))
         print('Results path: {}'.format(paths['results_file_path']))
+        print('Reload path:  {}'.format(paths['reload_path']))
         print()
 
         for name, args in (('DATA ARGS:', data_arguments),
