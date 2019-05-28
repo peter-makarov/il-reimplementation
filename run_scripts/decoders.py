@@ -9,7 +9,7 @@ Usage:
   [--vanilla-lstm] [--mlp=MLP] [--nonlin=NONLIN] [--lucky-w=W]
   [--tag-wraps=WRAPS] [--param-tying] [--verbose=VERBOSE]
   [--decoding-mode=MODE] [--dec-temperature=TEMP] [--dec-sample-size=SSIZE] [--dec-keep-sampling]
-  [--result-fn-suffix=SUFFIX]
+  [--beam-width=BEAMWIDTH] [--result-fn-suffix=SUFFIX]
   TRAIN-PATH DEV-PATH RESULTS-PATH [--test-path=TEST-PATH] [--reload-path=RELOAD-PATH]
 
 Arguments:
@@ -46,12 +46,13 @@ Options:
                                   both (use opening and closing tags)/close (only closing tag)/None [default: both]
   --verbose=VERBOSE             verbose==1: print to stdout processing info, verbose==2: visualize results of internal
                                   evaluation, display train and dev set alignments, costs [default: 0]
-  --decoding-mode=MODE          Which decoding method to use: sampling/channel [default: channel]
+  --decoding-mode=MODE          Which decoding method to use: sampling/channel/beam [default: channel]
   --dec-temperature=TEMP        If decoding-mode=="sampling", what inverse temperature to use. By default, sample
                                   straight from the model. [default: 1]
   --dec-sample-size=SSIZE       If decoding-mode=="sampling", how many samples to draw per input? [default: 20]
   --dec-keep-sampling           If decoding-mode=="sampling", whether to keep sampling until the required number of
                                   unique samples is produced for each input.
+  --beam-width=BEAMWIDTH        If decoding-mode=="beam", the width of the beam for beam search.  [default: 4]
   --result-fn-suffix=SUFFIX     Add the given suffix to the result file. Defaults to the empty string. [default: ]
   --test-path=TEST-PATH         path to test dataset to decode
   --reload-path=RELOAD-PATH     reload a pretrained model at this path (possibly relative to RESULTS-PATH)
@@ -187,6 +188,90 @@ def sample(name, batches, inverse_temperature, sample_size, transducer, vocab, k
     return output
 
 
+def beam(name, batches, beam_width, transducer, vocab):
+    """
+    Use beam search to generate output strings from the model given some input string and possibly features.
+    :param name: Name of the set of batches (dev or test).
+    :param batches: Batches.
+    :param beam_width: Beam width for beam search.
+    :param transducer: Transducer.
+    :param vocab: Vocabulary object.
+    :return: JSON-serializable dictionary of results.
+    """
+    then = time.time()
+    print('evaluating on {} data with beam search (beam width {})...'.format(name, beam_width))
+    output = dict()
+    for j, batch in enumerate(batches):
+        dy.renew_cg()
+        for sample in batch:
+            feats = sample.pos, sample.feats
+            log_prob = []
+            pred_acts = []
+            candidates = []
+            features = []
+            hypotheses = transducer.beam_search_decode(sample.lemma, feats, external_cg=True,
+                                                       beam_width=beam_width)
+            for loss, _loss_expr, prediction, predicted_actions in hypotheses:
+                # i.e. ordered from best to `beam_width`-worst
+                log_prob.append(loss)  # NB already float
+                pred_acts.append(action2string(predicted_actions, vocab))
+                candidates.append(prediction)
+                features.append(sample.feat_str)
+
+            results = {'candidates': candidates, 'log_prob': log_prob, 'acts': pred_acts, 'feats': features}
+            output[sample.word_str] = results
+        # report progress
+        if j > 0 and j % 50 == 0:
+            print('\t\t...{} batches'.format(j))
+    print('\t...finished in {:.3f} sec'.format(time.time() - then))
+    return output
+
+
+def launch_decoder(ddoc: dict, valid_data, name: str):
+    # @TODO
+    if ddoc['--decoding-mode'] == 'channel':
+        print('Decoding with a channel model...')
+
+        valid_batches = defaultdict(set)
+        for s in valid_data.samples:
+            if not any(t.lemma == s.lemma and t.actions == s.actions and t.pos == s.pos and t.feats == s.feats
+                       for t in valid_batches[s.word_str]):
+                valid_batches[s.word_str].add(s)
+        valid_batches = dict(valid_batches)
+        print('Total number of batches: ', len(valid_batches))
+
+        valid_output = compute_channel(name, valid_batches, transducer, VOCAB)
+        fname = '{}_channel{}.json'.format(name, ddoc['--result-fn-suffix'])
+
+    else:
+        # normal dev samples
+        decbatch_size = 1  # @TODO not making this a command-line parameter: Keep comp. graph as small as possible.
+        valid_batches = [valid_data.samples[i:i + decbatch_size] for i in range(0, len(valid_data), decbatch_size)]
+        print('Total number of dev batches: ', len(valid_batches))
+
+        if ddoc['--decoding-mode'] == 'sampling':
+            print('Decoding by sampling...')
+
+            inverse_temperature = float(ddoc['--dec-temperature'])
+            sample_size = int(ddoc['--dec-sample-size'])
+            keep_sampling_until_sample_size = ddoc['--dec-keep-sampling']
+
+            valid_output = sample(name, valid_batches, inverse_temperature, sample_size, transducer, VOCAB,
+                                keep_sampling_until_sample_size)
+            fname = '{}_samples{}.json'.format(name, ddoc['--result-fn-suffix'])
+
+        elif ddoc['--decoding-mode'] == 'beam':
+            print('Decoding by beam search...')
+
+            beam_width = int(ddoc['--beam-width'])
+            valid_output = beam(name, valid_batches, beam_width, transducer, VOCAB)
+            fname = '{}_beam{}.json'.format(name, ddoc['--result-fn-suffix'])
+        else:
+            raise NotImplementedError('Other decoding methods not supported.')
+
+    return valid_output, fname
+
+
 if __name__ == "__main__":
 
     np.random.seed(42)
@@ -194,7 +279,7 @@ if __name__ == "__main__":
     ddoc = docopt(__doc__)
     print('Processing arguments...')
     ddoc.update({'--align-dumb': True, '--mode': 'il', '--sample-weights': False, '--dev-subsample': 0,
-                 '--dev-stratify-by-pos' : False, '--try-reverse': False, '--iterations': 0, '--beam-width': 0,
+                 '--dev-stratify-by-pos' : False, '--try-reverse': False, '--iterations': 0, #'--beam-width': 0,
                  '--beam-widths': None, '--dropout': 0, '--pretrain-dropout': False, '--optimization': None, '--l2': 0,
                  '--alpha': 0, '--beta': 0, '--no-baseline': False, '--epochs': 0, '--patience': 0,
                  '--pick-loss': False, '--pretrain-epochs': 0, '--pretrain-until': 0, '--batch-size': 0,
@@ -212,61 +297,21 @@ if __name__ == "__main__":
                                                      **data_arguments)
     VOCAB = train_data.vocab
     VOCAB.train_cutoff()  # knows that entities before come from train set
-    dev_data = data_arguments['dataset'].from_file(paths['dev_path'], vocab=VOCAB, **data_arguments)
-    if paths['test_path']:
-        print('***TEST DECODING not supported. Run this script with DEV-PATH set to test set.')
-    #     # no alignments, hence BaseDataSet
-    #     test_data = BaseDataSet.from_file(paths['test_path'], vocab=VOCAB, **data_arguments)
-    # else:
-    #     test_data = None
 
     model = dy.Model()
     transducer = model_arguments['transducer'](model, VOCAB, **model_arguments)
     print('Trying to load model from: {}'.format(paths['reload_model_path']))
     model.populate(paths['reload_model_path'])
 
-    if ddoc['--decoding-mode'] == 'channel':
-        print('Decoding with a channel model...')
-
-        dev_batches = defaultdict(set)
-        for s in dev_data.samples:
-            if not any(t.lemma == s.lemma and t.actions == s.actions and t.pos == s.pos and t.feats == s.feats
-                       for t in dev_batches[s.word_str]):
-                dev_batches[s.word_str].add(s)
-        dev_batches = dict(dev_batches)
-        print('Total number of dev batches: ', len(dev_batches))
-
-        dev_output = compute_channel('dev', dev_batches, transducer, VOCAB)
-        fname = 'dev_channel{}.json'.format(ddoc['--result-fn-suffix'])
-
-    elif ddoc['--decoding-mode'] == 'sampling':
-        print('Decoding by sampling...')
-
-        inverse_temperature = float(ddoc['--dec-temperature'])
-        sample_size = int(ddoc['--dec-sample-size'])
-        keep_sampling_until_sample_size = ddoc['--dec-keep-sampling']
-        # normal dev samples
-        decbatch_size = 1  # @TODO not making this a command-line parameter: Keep comp. graph as small as possible.
-        dev_batches = [dev_data.samples[i:i + decbatch_size] for i in range(0, len(dev_data), decbatch_size)]
-        print('Total number of dev batches: ', len(dev_batches))
-
-        dev_output = sample('dev', dev_batches, inverse_temperature, sample_size, transducer, VOCAB,
-                            keep_sampling_until_sample_size)
-        fname = 'dev_samples{}.json'.format(ddoc['--result-fn-suffix'])
-
-    else:
-        raise NotImplementedError('Other decoding methods not supported '
-                                  '(for beam-search, use eval mode of run_transducer.py).')
-
-    path = os.path.join(paths['results_file_path'], fname)
-    print('Writing results to file "{path}".'.format(path=path))
-    with open(path, 'w', encoding=ENCODING) as w:
-        json.dump(dev_output, w, indent=4)
-
-    # if test_data:
-    #     print('=========TEST EVALUATION:=========')
-    #     test_batches = defaultdict(set)
-    #     for s in test_data.samples:
-    #         test_batches[s.word_str].add(s)
-    #     test_batches = dict(test_batches)
-    #     compute_channel('test', test_batches, transducer, VOCAB)
+    for name, path in (('dev', paths['dev_path']), ('test', paths['test_path'])):
+        if path:
+            print('*** {} DECODING ...'.format(name))
+            valid_data = data_arguments['dataset'].from_file(path, vocab=VOCAB, **data_arguments)
+            valid_output, fname = launch_decoder(ddoc, valid_data, name)
+            output_path = os.path.join(paths['results_file_path'], fname)
+            print('Writing results to file "{path}".'.format(path=output_path))
+            with open(output_path, 'w', encoding=ENCODING) as w:
+                json.dump(valid_output, w, indent=4, ensure_ascii=False)
+        else:
+            print('{} data do not exist. Skipping.')
+    print('Done.')
