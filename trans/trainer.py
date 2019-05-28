@@ -643,6 +643,8 @@ class TrainingSession(object):
                      check_condition,
                      train_until_accuracy=None,
                      optimizer=None,
+                     split_size=10**4,
+                     save_each_dev=True,
                      **kwargs):
 
         if optimizer is None:
@@ -688,77 +690,85 @@ class TrainingSession(object):
 
             train = self.train_data.samples
             random.shuffle(train)
-            batches = [train[i:i+self.batch_size] for i in range(0, self.train_len, self.batch_size)]
-            print('Number of train batches: {}.'.format(len(batches)))
 
-            # ENABLE DROPOUT
-            if dropout: self.transducer.set_dropout(dropout)
+            splits = [train[i:i+split_size] for i in range(0, self.train_len, split_size)]
+            if self.train_len > split_size:
+                print('*NB: Will do early stopping on splits of size {}. There are {} splits per epoch.'.format(
+                    split_size, len(splits)))
 
-            for j, batch in enumerate(batches):
-                train_loss += batch_update(batch, epoch)
-                if j > 0 and j % 100 == 0: print('\t\t...{} batches'.format(j))
-            print('\t\t...{} batches'.format(j))
+            for split_num, split in enumerate(splits):
+                batches = [split[i:i+self.batch_size] for i in range(0, len(split), self.batch_size)]
+                print('Number of train batches: {}.'.format(len(batches)))
 
-            # DISABLE DROPOUT AFTER TRAINING
-            if dropout: self.transducer.disable_dropout()
-            print('\t...finished in {:.3f} sec'.format(time.time() - then))
-            self.avg_loss = train_loss / self.train_len
-            print('Average train loss: ', self.avg_loss)
+                # ENABLE DROPOUT
+                if dropout: self.transducer.set_dropout(dropout)
 
-            # EVALUATE MODEL ON SUBSET OF TRAIN (SANITY)
-            train_accuracy, avg_loss = self.train_eval(check_condition(epoch))
-            if train_accuracy > self.best_train_accuracy:
-                self.best_train_accuracy = train_accuracy
+                for j, batch in enumerate(batches):
+                    train_loss += batch_update(batch, epoch)
+                    if j > 0 and j % 100 == 0: print('\t\t...{} batches'.format(j))
+                print('\t\t...{} batches'.format(j))
 
-            patience += 1
+                # DISABLE DROPOUT AFTER TRAINING
+                if dropout: self.transducer.disable_dropout()
+                print('\t...finished in {:.3f} sec'.format(time.time() - then))
+                self.avg_loss = train_loss / self.train_len
+                print('Average train loss: ', self.avg_loss)
 
-            print('Saving this epoch\'s model...')
-            self.model.save(tmp_model_path + '_e{}'.format(epoch))
+                # EVALUATE MODEL ON SUBSET OF TRAIN (SANITY)
+                train_accuracy, avg_loss = self.train_eval(check_condition(epoch))
+                if train_accuracy > self.best_train_accuracy:
+                    self.best_train_accuracy = train_accuracy
 
-            # EVALUATE MODEL ON DEV
-            dev_accuracy, avg_dev_loss = self.dev_eval(check_condition(epoch))
+                patience += 1
 
-            if dev_accuracy > self.best_dev_accuracy:
-                self.best_dev_accuracy = dev_accuracy
-                self.best_dev_acc_epoch = epoch
-                # using dev acc for early stopping
-                print('Found best dev accuracy so far {:.7f}'.format(self.best_dev_accuracy))
-                if pick_best_accuracy: patience = 0
+                if save_each_dev:
+                    print('Saving this epoch\'s model...')
+                    self.model.save(tmp_model_path + '_e{}'.format(epoch))
 
-            if avg_dev_loss < self.best_avg_dev_loss:
-                self.best_avg_dev_loss = avg_dev_loss
-                self.best_dev_loss_epoch = epoch
-                # using dev loss for early stopping
-                print('Found best dev loss so far {:.7f}'.format(self.best_avg_dev_loss))
-                if not pick_best_accuracy: patience = 0
+                # EVALUATE MODEL ON DEV
+                dev_accuracy, avg_dev_loss = self.dev_eval(check_condition(epoch))
 
-            if patience == 0:
-                # patience has been reset to 0, so save currently best model
-                self.model.save(tmp_model_path)
-                print('saved new best model to {}'.format(tmp_model_path))
+                if dev_accuracy > self.best_dev_accuracy:
+                    self.best_dev_accuracy = dev_accuracy
+                    self.best_dev_acc_epoch = epoch
+                    # using dev acc for early stopping
+                    print('Found best dev accuracy so far {:.7f}'.format(self.best_dev_accuracy))
+                    if pick_best_accuracy: patience = 0
 
-            print(('epoch: {} train loss: {:.4f} dev loss: {:.4f} dev acc: {:.4f} '
-               'train acc: {:.4f} best train acc: {:.4f} best dev acc: {:.4f} (epoch {}) '
-               'best dev loss: {:.7f} (epoch {}) patience = {}').format(
-               epoch, self.avg_loss, avg_dev_loss, dev_accuracy, train_accuracy,
-               self.best_train_accuracy, self.best_dev_accuracy, self.best_dev_acc_epoch,
-               self.best_avg_dev_loss, self.best_dev_loss_epoch, patience))
+                if avg_dev_loss < self.best_avg_dev_loss:
+                    self.best_avg_dev_loss = avg_dev_loss
+                    self.best_dev_loss_epoch = epoch
+                    # using dev loss for early stopping
+                    print('Found best dev loss so far {:.7f}'.format(self.best_avg_dev_loss))
+                    if not pick_best_accuracy: patience = 0
 
-            # LOG LATEST RESULTS
-            with open(log_file_path, 'a') as a:
-                a.write("{}\t{}\t{}\t{}\n".format(epoch, self.avg_loss, train_accuracy, dev_accuracy))
+                if patience == 0:
+                    # patience has been reset to 0, so save currently best model
+                    self.model.save(tmp_model_path)
+                    print('saved new best model to {}'.format(tmp_model_path))
 
-            if patience == max_patience:
-                print('out of patience after {} epochs'.format(epoch + 1))
-                train_progress_bar.finish()
-                break
-            if train_until_accuracy and train_accuracy > train_until_accuracy:
-                print('reached required training accuracy level of {}'.format(train_until_accuracy))
-                train_progress_bar.finish()
-                break
+                print(('epoch {} / split {}: train loss: {:.4f} dev loss: {:.4f} dev acc: {:.4f} '
+                   'train acc: {:.4f} best train acc: {:.4f} best dev acc: {:.4f} (epoch {}) '
+                   'best dev loss: {:.7f} (epoch {}) patience = {}').format(
+                   epoch, split_num, self.avg_loss, avg_dev_loss, dev_accuracy, train_accuracy,
+                   self.best_train_accuracy, self.best_dev_accuracy, self.best_dev_acc_epoch,
+                   self.best_avg_dev_loss, self.best_dev_loss_epoch, patience))
 
-            # UPDATE PROGRESS BAR
-            train_progress_bar.update(epoch)
+                # LOG LATEST RESULTS
+                with open(log_file_path, 'a') as a:
+                    a.write("{}/{}\t{}\t{}\t{}\n".format(epoch, split_num, self.avg_loss, train_accuracy, dev_accuracy))
+
+                if patience == max_patience:
+                    print('out of patience after {} epochs'.format(epoch + 1))
+                    train_progress_bar.finish()
+                    break
+                if train_until_accuracy and train_accuracy > train_until_accuracy:
+                    print('reached required training accuracy level of {}'.format(train_until_accuracy))
+                    train_progress_bar.finish()
+                    break
+
+                # UPDATE PROGRESS BAR
+                train_progress_bar.update(epoch)
 
 
 def withheld_data_eval(name, batches, transducer, vocab, beam_widths,
