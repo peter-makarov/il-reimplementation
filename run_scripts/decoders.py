@@ -97,18 +97,17 @@ def compute_channel(name, batches, transducer, vocab):
         for sample in batch:
             # @TODO one could imagine to draw multiple samples (then sampling=True)....
             feats = sample.pos, sample.feats
-            unseen = False
+            sample_actions = []
             for a in sample.actions:
                 if a >= vocab.act_train:
-                    print('Action unseen in training: ', vocab.act.i2w[a], '...skipping this sample.')
-                    unseen = True
-            if unseen:
-                continue
+                    print('Action unseen in training: ', vocab.act.i2w[a])
+                    a = UNK
+                sample_actions.append(a)
             loss, _, predicted_actions = transducer.transduce(sample.lemma, feats,
                                                               oracle_actions={'loss': "nll",
                                                                               'rollout_mixin_beta': 1.,
                                                                               'global_rollout': False,
-                                                                              'target_word': sample.actions,
+                                                                              'target_word': sample_actions,
                                                                               'optimal': True,
                                                                               'bias_inserts': False},
                                                               sampling=False,
@@ -313,5 +312,5 @@ if __name__ == "__main__":
             with open(output_path, 'w', encoding=ENCODING) as w:
                 json.dump(valid_output, w, indent=4, ensure_ascii=False)
         else:
-            print('{} data do not exist. Skipping.')
+            print('{} data do not exist. Skipping.'.format(name))
     print('Done.')

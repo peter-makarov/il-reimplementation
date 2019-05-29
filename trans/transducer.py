@@ -343,7 +343,7 @@ class Transducer(object):
         self.NUM_POS   = self.vocab.pos_train
         self.NUM_ACTS  = self.vocab.act_train
         # an enumeration of all encoded insertions
-        self.INSERTS   = range(self.vocab.number_specials, self.NUM_ACTS)
+        self.INSERTS   = list(range(self.vocab.number_specials, self.NUM_ACTS)) + [UNK]
         
         # report stats
         print(u'{} actions: {}'.format(self.NUM_ACTS,
