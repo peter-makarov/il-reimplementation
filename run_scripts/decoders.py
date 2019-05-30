@@ -178,7 +178,8 @@ def sample(name, batches, inverse_temperature, sample_size, transducer, vocab, k
                     features.append(sample.feat_str)
                     #print('Draw: ', prediction, action2string(predicted_actions, vocab))
             results = {'candidates': candidates, 'log_prob': log_prob,
-                       'acts': [action2string(pa, vocab) for pa in pred_acts], 'feats': features}
+                       'acts': [action2string(pa, vocab) for pa in pred_acts],
+                       'feats': features, 'input': sample.lemma_str}
             output[sample.lemma_str] = results
         # report progress
         if j > 0 and j % 50 == 0:
@@ -217,7 +218,8 @@ def beam(name, batches, beam_width, transducer, vocab):
                 candidates.append(prediction)
                 features.append(sample.feat_str)
 
-            results = {'input': sample.lemma_str, 'candidates': candidates, 'log_prob': log_prob, 'acts': pred_acts, 'feats': features}
+            results = {'candidates': candidates, 'log_prob': log_prob, 'acts': pred_acts,
+                       'feats': features, 'input': sample.lemma_str}
             output[sample.word_str] = results
         # report progress
         if j > 0 and j % 50 == 0:
