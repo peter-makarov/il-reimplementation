@@ -35,3 +35,17 @@ SANITY_SIZE = 100
 
 ### for docopt argument processing
 NULL_ARGS = 'None', 'none', 'no', '0'
+
+LOCAL_CONFIG_FILE = SRC_PATH +'/defaults_config.py'
+if os.path.isfile(LOCAL_CONFIG_FILE):
+        try:
+            with open(LOCAL_CONFIG_FILE, encoding="utf-8") as f:
+                code = compile(f.read(), LOCAL_CONFIG_FILE, 'exec')
+                exec(code)
+#            execfile(LOCAL_CONFIG_FILE,globals())
+            print('defaults updated from file {LOCAL_CONFIG_FILE} to {globals}'.format(LOCAL_CONFIG_FILE=LOCAL_CONFIG_FILE,globals=globals()))
+        except:
+            print('WARNING: could not update defaults from file {LOCAL_CONFIG_FILE}'.format(LOCAL_CONFIG_FILE=LOCAL_CONFIG_FILE))
+            raise
+
+
