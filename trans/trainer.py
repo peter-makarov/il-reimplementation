@@ -8,7 +8,7 @@ import numpy as np
 
 from trans import util
 from trans import datasets
-from trans.defaults import SANITY_SIZE
+from trans.defaults import SANITY_SIZE, SHOW_PROGRESSBAR, SAVE_ALL_MODELS
 
 from trans.transducer import cost_actions, edit_cost_matrix
 
@@ -644,7 +644,7 @@ class TrainingSession(object):
                      train_until_accuracy=None,
                      optimizer=None,
                      split_size=10**4,
-                     save_each_dev=True,
+                     save_each_dev=SAVE_ALL_MODELS,
                      **kwargs):
 
         if optimizer is None:
@@ -672,8 +672,9 @@ class TrainingSession(object):
         print('Will early stop based on dev {}.'.format('accuracy' if pick_best_accuracy else 'loss'))
 
         # PROGRESS BAR INIT
-        widgets = [progressbar.Bar('>'), ' ', progressbar.ETA()]
-        train_progress_bar = progressbar.ProgressBar(widgets=widgets, maxval=epochs).start()
+        if SHOW_PROGRESSBAR:
+            widgets = [progressbar.Bar('>'), ' ', progressbar.ETA()]
+            train_progress_bar = progressbar.ProgressBar(widgets=widgets, maxval=epochs).start()
 
         # LOG FILE INIT
         with open(log_file_path, 'a') as a:
@@ -760,15 +761,18 @@ class TrainingSession(object):
 
                 if patience == max_patience:
                     print('out of patience after {} epochs'.format(epoch + 1))
-                    train_progress_bar.finish()
+                    if SHOW_PROGRESSBAR:
+                        train_progress_bar.finish()
                     break
                 if train_until_accuracy and train_accuracy > train_until_accuracy:
                     print('reached required training accuracy level of {}'.format(train_until_accuracy))
-                    train_progress_bar.finish()
+                    if SHOW_PROGRESSBAR:
+                        train_progress_bar.finish()
                     break
 
                 # UPDATE PROGRESS BAR
-                train_progress_bar.update(epoch)
+                if SHOW_PROGRESSBAR:
+                    train_progress_bar.update(epoch)
 
 
 def withheld_data_eval(name, batches, transducer, vocab, beam_widths,

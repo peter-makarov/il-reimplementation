@@ -36,6 +36,12 @@ SANITY_SIZE = 100
 ### for docopt argument processing
 NULL_ARGS = 'None', 'none', 'no', '0'
 
+### use progressbar
+SHOW_PROGRESSBAR = True
+
+### save all models from all epochs
+SAVE_ALL_MODELS = True
+
 LOCAL_CONFIG_FILE = SRC_PATH +'/defaults_config.py'
 if os.path.isfile(LOCAL_CONFIG_FILE):
         try:
