@@ -119,15 +119,18 @@ class VocabBox(object):
     def __repr__(self):
         return ('VocabBox (act, feat, pos, char, feat_type) with the following '
                 'special actions: {}'.format(self.w2i_acts))
-    
+
     def train_cutoff(self, path=None):
         # store indices separating training set elements
         # from elements encoded later from unseen samples
-        self.act_train  = len(self.act)
-        self.feat_train = len(self.feat)
-        self.pos_train  = len(self.pos)
-        self.char_train = len(self.char)
-        self.feat_type_train = len(self.feat_type)
+        if self.act_train is None:  # the rest are None too
+            self.act_train  = len(self.act)
+            self.feat_train = len(self.feat)
+            self.pos_train  = len(self.pos)
+            self.char_train = len(self.char)
+            self.feat_type_train = len(self.feat_type)
+        else:
+            print('Train cutoff has already been applied.')
         if path:
             path2vocab = os.path.join(path, 'vocab.json')
             if os.path.exists(path2vocab):
