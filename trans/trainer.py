@@ -722,8 +722,8 @@ class TrainingSession(object):
                 patience += 1
 
                 if save_each_dev:
-                    print('Saving this epoch\'s model...')
-                    self.model.save(tmp_model_path + '_e{}'.format(epoch))
+                    print('Saving this epoch and split\'s model...')
+                    self.model.save(tmp_model_path + '_e{}s{}'.format(epoch, split_num))
 
                 # EVALUATE MODEL ON DEV
                 dev_accuracy, avg_dev_loss = self.dev_eval(check_condition(epoch))
