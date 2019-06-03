@@ -204,7 +204,6 @@ def beam(name, batches, beam_width, transducer, vocab):
             log_prob = []
             pred_acts = []
             candidates = []
-            features = []
             hypotheses = transducer.beam_search_decode(sample.lemma, feats, external_cg=True,
                                                        beam_width=beam_width)
             for loss, _loss_expr, prediction, predicted_actions in hypotheses:
