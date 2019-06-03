@@ -144,7 +144,7 @@ def sample(name, batches, inverse_temperature, sample_size, transducer, vocab, k
     print('For each sample, will sample {} {} distinct output sequences. '
           'Using alpha("inverse temperature")={}.'.format(
             "exactly" if keep_sampling_until_sample_size else "at most", sample_size, inverse_temperature))
-    output = dict()
+    output = defaultdict(dict)
     for j, batch in enumerate(batches):
         dy.renew_cg()
         for sample in batch:
@@ -176,12 +176,12 @@ def sample(name, batches, inverse_temperature, sample_size, transducer, vocab, k
             results = {'candidates': candidates, 'log_prob': log_prob,
                        'acts': [action2string(pa, vocab) for pa in pred_acts],
                        'target': sample.word_str}
-            output[(sample.lemma_str, sample.feat_str)] = results
+            output[sample.lemma_str][sample.feat_str] = results
         # report progress
         if j > 0 and j % 50 == 0:
             print('\t\t...{} batches'.format(j))
     print('\t...finished in {:.3f} sec'.format(time.time() - then))
-    return output
+    return dict(output)
 
 
 def beam(name, batches, beam_width, transducer, vocab):
@@ -196,7 +196,7 @@ def beam(name, batches, beam_width, transducer, vocab):
     """
     then = time.time()
     print('evaluating on {} data with beam search (beam width {})...'.format(name, beam_width))
-    output = dict()
+    output = defaultdict(dict)
     for j, batch in enumerate(batches):
         dy.renew_cg()
         for sample in batch:
@@ -213,12 +213,12 @@ def beam(name, batches, beam_width, transducer, vocab):
                 candidates.append(prediction)
 
             results = {'candidates': candidates, 'log_prob': log_prob, 'acts': pred_acts, 'target': sample.word_str}
-            output[(sample.lemma_str, sample.feat_str)] = results
+            output[sample.lemma_str][sample.feat_str] = results
         # report progress
         if j > 0 and j % 50 == 0:
             print('\t\t...{} batches'.format(j))
     print('\t...finished in {:.3f} sec'.format(time.time() - then))
-    return output
+    return dict(output)
 
 
 def launch_decoder(ddoc: dict, valid_data, name: str):
