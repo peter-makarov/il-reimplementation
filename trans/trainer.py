@@ -217,6 +217,9 @@ class TrainingSession(object):
         self.best_train_accuracy = 0.
 
     def reload(self, path2model, tmp_model_path=None):
+        if not path2model:
+            print('Path doesn\'t exist: Cannot reload model!')
+            return
         print('Trying to reload model from: {}'.format(path2model))
         self.model.populate(path2model)
         print('Computing dev accuracy of the reloaded model...')

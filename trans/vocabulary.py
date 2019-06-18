@@ -88,7 +88,7 @@ class VocabBox(object):
         self.feat = Vocab(w2i_feats, encoding=encoding)
         if pos_emb:
             # pos features get special treatment
-            self.pos = Vocab(w2i_feats, encoding=encoding)
+            self.pos = Vocab({UNK_CHAR : UNK}, encoding=encoding)
             print('VOCAB will index POS separately.')
         else:
             self.pos = self.feat
@@ -138,7 +138,7 @@ class VocabBox(object):
             else:
                 print('Writing vocab to: ', path2vocab)
                 with open(path2vocab, 'w') as w:
-                    json.dump(self.serialize(), w, indent=4)
+                    json.dump(self.serialize(), w, indent=4, ensure_ascii=False)
 
     def serialize(self) -> Dict:
         return dict(encoding=self.encoding, pos_emb=self.pos_emb,

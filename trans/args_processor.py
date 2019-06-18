@@ -60,7 +60,8 @@ def process_paths(arguments):
                 reload_model_path = os.path.join(reload_path, p)
                 break
         if not reload_model_path:
-            Exception('Failed to find the model at this path: {}'.format(reload_path))
+            print('Failed to find the model at this path: {}'.format(reload_path))
+            # raise Exception('Failed to find the model at this path: {}'.format(reload_path))
     elif arguments['--reload-path'] == 'self' or arguments['--mode'] == 'eval' or 'DECODERS' in arguments:
         # flag to reload from result directory
         reload_path = results_file_path
@@ -206,6 +207,7 @@ def process_arguments(arguments, verbose=True):
         print('Test path:    {}'.format(paths['test_path']))
         print('Results path: {}'.format(paths['results_file_path']))
         print('Reload path:  {}'.format(paths['reload_path']))
+        print('Reload model path:  {}'.format(paths['reload_model_path']))
         print()
 
         for name, args in (('DATA ARGS:', data_arguments),
