@@ -773,6 +773,11 @@ class TrainingSession(object):
                 # UPDATE PROGRESS BAR
                 train_progress_bar.update(epoch)
 
+            else:
+                # ... if no break by early stopping or having reach requested metric
+                continue
+            # inner loop was broken, break the outer
+            break
 
 def withheld_data_eval(name, batches, transducer, vocab, beam_widths,
                        pred_path, gold_path, sigm2017format):
