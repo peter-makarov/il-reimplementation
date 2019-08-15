@@ -647,7 +647,7 @@ class TrainingSession(object):
                      train_until_accuracy=None,
                      optimizer=None,
                      split_size=10**4,
-                     save_each_dev=True,
+                     save_each_dev=False,
                      **kwargs):
 
         if optimizer is None:
