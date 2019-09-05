@@ -162,7 +162,8 @@ if __name__ == "__main__":
         training_session = TrainingSession(model, transducer, VOCAB,
             train_data, dev_data, optim_arguments['batch-size'],  # train batchsize
             optim_arguments['optimizer'], batch_size, dev_batches,
-            optim_arguments['subsample'], optim_arguments['stratify-by-pos'])
+            optim_arguments['subsample'], optim_arguments['stratify-by-pos'],
+            channel_eval=not optim_arguments['pick-acc'])
 
         if paths['reload_path']:
             training_session.reload(paths['reload_model_path'], paths['tmp_model_path'])

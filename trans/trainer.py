@@ -8,7 +8,7 @@ import numpy as np
 
 from trans import util
 from trans import datasets
-from trans.defaults import SANITY_SIZE
+from trans.defaults import SANITY_SIZE, UNK
 
 from trans.transducer import cost_actions, edit_cost_matrix
 
@@ -154,6 +154,52 @@ def internal_eval_beam(batches, transducer, vocab,
     print('\t...finished in {:.3f} sec'.format(time.time() - then))
     return accuracy, total_loss, predictions, pred_acts
 
+
+def internal_eval_channel(batches, transducer, vocab, previous_predicted_actions, name='train', **kwargs):
+    """
+    Instead of predicting targets, score them with p(target, a* | input, feats) where a* is an optimal edit sequence.
+    :param batches: Batches.
+    :param transducer: Transducer.
+    :param vocab: Vocabulary object.
+    :param previous_predicted_actions: Actions used previously in channel decoding.
+    :param name: Name of the set of batches (e.g. train, dev)
+    :return:
+    """
+    then = time.time()
+    print('evaluating on {} data with channel decoding...'.format(name))
+    total_loss = 0.
+    pred_acts = []
+    for j, batch in enumerate(batches):
+        dy.renew_cg()
+        for sample in batch:
+            feats = sample.pos, sample.feats
+            sample_actions = []
+            for a in sample.actions:
+                if a >= vocab.act_train:
+                    # print('Action unseen in training: ', vocab.act.i2w[a])
+                    a = UNK
+                sample_actions.append(a)
+            loss, _, predicted_actions = transducer.transduce(sample.lemma, feats,
+                                                              oracle_actions={'loss': "nll",
+                                                                              'rollout_mixin_beta': 1.,
+                                                                              'global_rollout': False,
+                                                                              'target_word': sample_actions,
+                                                                              'optimal': True,
+                                                                              'bias_inserts': False},
+                                                              sampling=False,
+                                                              channel=True,
+                                                              external_cg=True)
+            pred_acts.append(predicted_actions)
+            total_loss += dy.average(loss).value()  # sum of average log probabilities of actions. Alternative: dy.esum
+        if j > 0 and j % 100 == 0:
+            print('\t\t...{} batches'.format(j))
+    print('\t...finished in {:.3f} sec'.format(time.time() - then))
+    print('\t...actions used in decoding are {:.3f}% as previous eval.'.format(
+        100*np.mean([a == pa for a, pa in zip(pred_acts, previous_predicted_actions)])))
+
+    return total_loss, pred_acts
+
+
 class TrainingSession(object):
     def __init__(self, model, transducer, vocab,
                  train_data, dev_data,
@@ -162,7 +208,8 @@ class TrainingSession(object):
                  decbatch_size=None,
                  dev_batches=None,
                  subsample=0.,
-                 stratify_by_pos=False):
+                 stratify_by_pos=False,
+                 channel_eval=False):
 
         self.model = model
         self.transducer = transducer
@@ -207,14 +254,15 @@ class TrainingSession(object):
         self.train_predicted_actions = [None]*sanity_size
 
         # PERFORMANCE METRICS
+        self.channel_eval = channel_eval  # what metric to use: accuracy or log p of optimal actions
         # dev performance stats
         self.best_avg_dev_loss = 999.
-        self.best_dev_accuracy = 0.
+        self.best_dev_accuracy = 0. if not self.channel_eval else -10**6
         self.best_dev_loss_epoch = 0
         self.best_dev_acc_epoch  = 0
         # train performance stats
         self.avg_loss = 0.
-        self.best_train_accuracy = 0.
+        self.best_train_accuracy = 0. if not self.channel_eval else -10**6
 
     def reload(self, path2model, tmp_model_path=None):
         if not path2model:
@@ -258,19 +306,33 @@ class TrainingSession(object):
         else:
             dev_batches = self.dev_batches
 
-        dev_accuracy, avg_dev_loss, _, self.dev_predicted_actions = \
-            internal_eval(dev_batches, self.transducer, self.vocab,
-                          self.dev_predicted_actions,
-                          check_condition=check_condition, name='dev')
-        return dev_accuracy, avg_dev_loss
+        if self.channel_eval:
+            # @TODO hack: loss is a metric here
+            avg_dev_loss, self.dev_predicted_actions = \
+                internal_eval_channel(dev_batches, self.transducer, self.vocab,
+                                      self.dev_predicted_actions, name='dev')
+            return avg_dev_loss, -avg_dev_loss
+        else:
+            dev_accuracy, avg_dev_loss, _, self.dev_predicted_actions = \
+                internal_eval(dev_batches, self.transducer, self.vocab,
+                              self.dev_predicted_actions,
+                              check_condition=check_condition, name='dev')
+            return dev_accuracy, avg_dev_loss
 
     def train_eval(self, check_condition=True):
         # call internal_eval with train batches
-        train_dev_accuracy, avg_loss, _, self.train_predicted_actions = \
-            internal_eval(self.sanity_batches, self.transducer, self.vocab,
-                          self.train_predicted_actions,
-                          check_condition=check_condition, name='train')
-        return train_dev_accuracy, avg_loss
+        if self.channel_eval:
+            # @TODO hack: loss is a metric here
+            avg_loss, self.train_predicted_actions = \
+                internal_eval_channel(self.sanity_batches, self.transducer, self.vocab,
+                                      self.train_predicted_actions, name='train')
+            return avg_loss, -avg_loss
+        else:
+            train_dev_accuracy, avg_loss, _, self.train_predicted_actions = \
+                internal_eval(self.sanity_batches, self.transducer, self.vocab,
+                              self.train_predicted_actions,
+                              check_condition=check_condition, name='train')
+            return train_dev_accuracy, avg_loss
 
     def run_MLE_training(self, **kwargs):
 
