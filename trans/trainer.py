@@ -256,7 +256,7 @@ class TrainingSession(object):
         # PERFORMANCE METRICS
         self.channel_eval = channel_eval  # what metric to use: accuracy or log p of optimal actions
         # dev performance stats
-        self.best_avg_dev_loss = 999.
+        self.best_avg_dev_loss = 99999999.
         self.best_dev_accuracy = 0. if not self.channel_eval else -10**6
         self.best_dev_loss_epoch = 0
         self.best_dev_acc_epoch  = 0
