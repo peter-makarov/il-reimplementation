@@ -101,16 +101,22 @@ def compute_channel(name, batches, transducer, vocab):
                     print('Action unseen in training: ', vocab.act.i2w[a])
                     a = UNK
                 sample_actions.append(a)
-            loss, _, predicted_actions = transducer.transduce(sample.lemma, feats,
-                                                              oracle_actions={'loss': "nll",
-                                                                              'rollout_mixin_beta': 1.,
-                                                                              'global_rollout': False,
-                                                                              'target_word': sample_actions,
-                                                                              'optimal': True,
-                                                                              'bias_inserts': False},
-                                                              sampling=False,
-                                                              channel=True,
-                                                              external_cg=True)
+            try:
+                loss, _, predicted_actions = transducer.transduce(sample.lemma, feats,
+                                                                  oracle_actions={'loss': "nll",
+                                                                                  'rollout_mixin_beta': 1.,
+                                                                                  'global_rollout': False,
+                                                                                  'target_word': sample_actions,
+                                                                                  'optimal': True,
+                                                                                  'bias_inserts': False},
+                                                                  sampling=False,
+                                                                  channel=True,
+                                                                  external_cg=True)
+            except MemoryError as e:
+                print(f'Memory error on the following input: {sample.word_str, sample.lemma}', sample)
+                print(e)
+                predicted_actions = []
+                loss = -np.inf
             pred_acts.append(action2string(predicted_actions, vocab))
             log_prob.append(dy.esum(loss).value())  # sum log probabilities of actions
             candidates.append(sample.lemma_str)
