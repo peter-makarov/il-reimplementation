@@ -1,3 +1,4 @@
+from typing import List, Tuple
 from collections import Counter
 
 import dynet as dy
@@ -6,6 +7,7 @@ import numpy as np
 from trans.defaults import COPY, DELETE, BEGIN_WORD, END_WORD, UNK, MAX_ACTION_SEQ_LEN
 from trans.stack_lstms import Encoder
 from trans.datasets import action2string, lemma2string
+from trans.optimal_expert import OptimalExpert
 
 NONLINS = {'tanh' : dy.tanh, 'ReLU' : dy.rectify, 'linear' : lambda e: e}
 
@@ -54,6 +56,15 @@ def log_sum_softmax_loss(indices, logits, logits_len, valid_actions=None, verbos
         logits += dy.inputVector(costs)
     log_sum_selected_terms = dy.logsumexp([dy.pick(logits, index=e) for e in indices])
     normalization_term = dy.logsumexp([l for l in logits])
+    # print(
+    #     f"""
+    #     indices: {indices}
+    #     logits: {logits.npvalue()}
+    #     logits_len: {logits_len}
+    #     valid_actions: {valid_actions}
+    #     costs: {costs}
+    #     """
+    # )
     return log_sum_selected_terms - normalization_term
 
 
@@ -261,6 +272,25 @@ def oracle_with_rollout(word, target_word, rest_of_input, valid_actions,
         print('Valid actions:', valid_actions, action2string(valid_actions, vocab))
         print('Optimal actions:', optimal_actions, action2string(optimal_actions, vocab))
         print('Costs:', costs)
+
+    # print(
+    #     f"""
+    #     rest_of_input=x: {rest_of_input}
+    #     rest_of_input as chars: {lemma2string(rest_of_input, vocab)}
+    #     word=y: {word}
+    #     target_word=t: {target_word}
+    #     t as chars: {action2string(target_word, vocab)}
+    #     valid_actions: {valid_actions}
+    #     actions as strings: {[action2string([a], vocab) for a in valid_actions]}
+    #     rollout: {rollout}
+    #     optimal: {optimal}
+    #     bias_inserts: {bias_inserts}
+    #     errors: {errors}
+    #     optimal_actions: {optimal_actions}
+    #     costs: {costs}
+    #     """
+    # )
+
     return optimal_actions, costs
 
 
@@ -344,7 +374,9 @@ class Transducer(object):
         self.NUM_ACTS  = self.vocab.act_train
         # an enumeration of all encoded insertions
         self.INSERTS   = list(range(self.vocab.number_specials, self.NUM_ACTS)) + [UNK]
-        
+
+        self.optimal_expert = OptimalExpert(MAX_ACTION_SEQ_LEN)
+
         # report stats
         print(u'{} actions: {}'.format(self.NUM_ACTS,
             u', '.join(self.vocab.act.keys())))
@@ -554,6 +586,97 @@ class Transducer(object):
                 reg.append(dy.l2_norm(self.ACT_LOOKUP.expr()))
         return 0.5 * dy.esum(reg)
 
+    def expert_rollout(
+            self, word: List[str], target_word: List[int],
+            rest_of_input: List[int], valid_actions: List[int]
+    ) -> Tuple[List[int], np.array]:
+
+        """
+        Rolls out with optimal expert policy.
+
+        :param word: The current prediction (y), characters.
+        :param target_word: Target string (t), action integer codes.
+        :param rest_of_input: Input suffix (x[i:]), lemma integer codes.
+        :param valid_actions: Valid actions, action integer codes.
+        :return: List of optimal actions (as integer codes) and regrets (
+            by convention, invalid actions are set to -inf).
+        """
+
+        # normalize all representations
+        assert rest_of_input and rest_of_input[-1] == END_WORD, (
+            # ignore the end-of-word symbol
+            f"""
+            rest_of_input: {lemma2string(rest_of_input, self.vocab)}
+            """
+        )
+        x = lemma2string(rest_of_input[:-1], self.vocab)
+        i = 0  # because x is a suffix
+        t = action2string(target_word, self.vocab).replace("<UNK>", "☭")
+        y = "".join(word)
+
+        action_scores = self.optimal_expert.score(x, t, i, y)
+        optimal_action_cost = min(action_scores.values())
+        worst_valid_regret = max(action_scores.values()) - optimal_action_cost
+
+        accuracy_error_cost = max(5., worst_valid_regret)  # by convention
+        valid_action_set = set(valid_actions)
+        regrets = np.ones(self.vocab.act_train) * accuracy_error_cost
+        for action, score in action_scores.items():
+            # some actions (COPY, DELETE, END) are integer codes
+            action_index = self.vocab.act.w2i.get(action, action)
+            try:
+                regrets[action_index] = score - optimal_action_cost
+            except IndexError as e:
+                print(
+                    f"""
+                    error: {e}
+                    x: {x},
+                    t: {t},
+                    y: {y},
+                    action_index: {action_index}
+                    action: {action}
+                    action_scores: {action_scores}
+                    """
+                )
+            assert (
+                action_index in valid_action_set or action_index == END_WORD,
+                f"""
+                action: {action},
+                action_index: {action_index},
+                valid_actions: {valid_action_set},
+                action_scores: {action_scores} 
+                """
+            )
+        optimal_actions = list(np.where(regrets == 0)[0])
+        assert optimal_actions, (
+            f"""
+            x: {x},
+            t: {t},
+            y: {y},
+            action_index: {regrets}
+            action_scores: {action_scores}
+            """
+        )
+
+        # by convention, set externally established invalid actions to -inf
+        valid_action_mask = np.zeros(regrets.shape, dtype=np.bool_)
+        valid_action_mask[valid_actions] = True
+        regrets[~valid_action_mask] = -np.inf
+
+        # print(
+        #     f"""
+        #     rest_of_input: {rest_of_input}
+        #     x: {x}
+        #     word=y: {word}
+        #     target_word: {target_word}
+        #     t: {action2string(target_word, self.vocab)}
+        #     optimal_actions: {optimal_actions}
+        #     actions as strings: {[action2string([a], self.vocab) for a in optimal_actions]}
+        #     costs: {regrets}
+        #     """
+        # )
+        return optimal_actions, regrets
+
     def transduce(self, lemma, feats, oracle_actions=None, external_cg=True, sampling=False,
                   unk_avg=True, verbose=False, channel=False, inverse_temperature=1.):
         """
@@ -706,12 +829,21 @@ class Transducer(object):
                 else:
                     rollout = None
                 
-                optim_actions, costs = oracle_with_rollout(word, target_word, encoder.get_extra(),
-                                                           valid_actions, rollout, self.vocab,
-                                                           optimal=dynamic['optimal'],
-                                                           bias_inserts=dynamic['bias_inserts'],
-                                                           errors=generation_errors,
-                                                           verbose=verbose)
+                # optim_actions, costs = oracle_with_rollout(word, target_word, encoder.get_extra(),
+                #                                            valid_actions, rollout, self.vocab,
+                #                                            optimal=dynamic['optimal'],
+                #                                            bias_inserts=dynamic['bias_inserts'],
+                #                                            errors=generation_errors,
+                #                                            verbose=verbose)
+
+                optim_actions, costs = self.expert_rollout(
+                    word, target_word, encoder.get_extra(), valid_actions)
+
+                # print(
+                #     f"""
+                #     optimal_actions2: {optim_actions2}
+                #     costs2: {costs2}
+                #     """)
 
                 log_probs = dy.log_softmax(logits, valid_actions)
                 log_probs_np = log_probs.npvalue()
