@@ -115,8 +115,7 @@ class OptimalExpert(Expert):
             prefixes.append(Prefix(y, t, j))
         return prefixes
 
-    @staticmethod
-    def roll_out(x: Sequence[Any], t: Sequence[Any], i: int,
+    def roll_out(self, x: Sequence[Any], t: Sequence[Any], i: int,
                  actions_prefixes: Iterable[ActionsPrefix]):
         costs_to_go = dict()
         for actions_prefix in actions_prefixes:
