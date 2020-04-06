@@ -158,7 +158,7 @@ if __name__ == "__main__":
 
     with open(paths['train_path']) as f:
         train_lines = f.readlines()
-    sed_aligner = StochasticEditDistance.fit_from_data(train_lines, em_iterations=1)
+    sed_aligner = StochasticEditDistance.fit_from_data(train_lines, em_iterations=10)
     expert = OptimalSubstitutionExpert(sed_aligner)
     model_arguments['expert'] = expert
 
