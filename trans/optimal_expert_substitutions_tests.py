@@ -4,6 +4,8 @@ import unittest
 from trans import optimal_expert
 from trans import optimal_expert_substitutions
 from trans import sed
+from trans.actions import Copy, Del, Ins, Sub
+
 
 class OptimalSubstitutionExpertTests(unittest.TestCase):
 
@@ -36,7 +38,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         t = "abbbbbbb"
         y = "bbbbbbb"
         action_scores = self.optimal_expert.score(x, t, i, y)
-        expected_action_scores = {optimal_expert.END: 0, sed.Ins("b"): 1}
+        expected_action_scores = {optimal_expert.END: 0, Ins("b"): 1}
         self.assertEqual(expected_action_scores, action_scores)
 
     def test_correct_end(self):
@@ -45,31 +47,41 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         y = "walk"
         t = "walked"
         action_scores = self.optimal_expert.score(x, t, i, y)
-        expected_action_scores = {sed.Ins("e"): 2}
+        expected_action_scores = {Ins("e"): 2}
         self.assertEqual(expected_action_scores, action_scores)
 
     def test_sed_aligner(self):
 
         input_lines = [
-            "abby\ta b i", "abidjan\ta b i d ʒ ɑ", "abject\ta b ʒ ɛ k t",
-            "abolir\ta b ɔ l i ʁ", "abonnement\ta b ɔ n m ɑ"
+            "abba\tabba", "bababa\tbababa", "bba\tbba",
+            "bbbb\tbbb", "bbbbb\tbbbb"
         ]
 
+        # learns to copy even when not initialized with copy bias
         aligner = sed.StochasticEditDistance.fit_from_data(
             input_lines, em_iterations=5)
         expert = optimal_expert_substitutions.OptimalSubstitutionExpert(aligner)
 
-        x = "abject"
-        t = "a b ʒ ɛ k t"
-        i = 3
-        y = "a b ʒ e"
+        x = ""
+        i = 0
+        t = "abbbbbbb"
+        y = "bbbbbbb"
         action_scores = expert.score(x, t, i, y)
-        #print(action_scores)
+        optimal_action, _ = max_dict(action_scores)
+        expected_actions = {optimal_expert.END, Ins("b")}
+        self.assertSetEqual(expected_actions, set(action_scores.keys()))
+        self.assertEqual(optimal_expert.END, optimal_action)
 
     def test_sed_aligner_real_data(self):
 
+        verbose = False
+        input_lines = []
         with open("test_data/fre_train.tsv") as f:
-            input_lines = f.readlines()
+            try:
+                for _ in range(100):
+                    input_lines.append(next(f))
+            except StopIteration:
+                pass
 
         aligner = sed.StochasticEditDistance.fit_from_data(
             input_lines, em_iterations=1)
@@ -79,26 +91,36 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         t = "a b ʒ ɛ k t"
         i = 3
         y = "a b ʒ e"
+
+        optimal_actions = iter(
+            (Sub(old='e', new=' '), Sub(old='c', new='k'), Ins(new=' '),
+             Copy(old='t', new='t'), optimal_expert.END)
+        )
+
         while True:
             action_scores = expert.score(x, t, i, y)
-            print(action_scores)
             action, score = max_dict(action_scores)
-            print(f"optimal action: {action, score}\n")
-            print()
+            if verbose:
+                print(action_scores)
+                print(f"optimal action: {action, score}\n")
+                print()
             if action == optimal_expert.END:
                 break
-            if isinstance(action, sed.Del):
+            if isinstance(action, Del):
                 i += 1
-            elif isinstance(action, sed.Ins):
+            elif isinstance(action, Ins):
                 y += action.new
-            elif isinstance(action, optimal_expert_substitutions.Copy):
-                i += 1
-                y += action.old
-            elif isinstance(action, sed.Sub):
+            elif isinstance(action, Sub):
                 i += 1
                 y += action.new
             else:
                 raise ValueError(f"action: {action}")
+            self.assertEqual(next(optimal_actions), action)
+
+    def test_actions(self):
+
+        self.assertTrue(isinstance(Copy(1, 1), Sub))
+        self.assertFalse(isinstance(Sub(1, 2), Copy))
 
 
 def max_dict(d):
@@ -106,6 +128,7 @@ def max_dict(d):
     heapq.heapify(x)
     v, _, k = heapq.heappop(x)
     return k, -v
+
 
 if __name__ == "__main__":
     unittest.main()

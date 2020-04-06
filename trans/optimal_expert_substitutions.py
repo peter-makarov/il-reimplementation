@@ -1,16 +1,14 @@
 from typing import Any, Iterable, List, Sequence, Union
 import collections
 
-from trans.defaults import COPY, DELETE
 from trans.defaults import END_WORD as END
 from trans.optimal_expert import ActionsPrefix, OptimalExpert, Prefix, edit_distance
-from trans.sed import Aligner, Del, Ins, Sub
+from trans.actions import Aligner, Copy, Del, Ins, Sub
 
 import numpy as np
 
 
 Action = Union[collections.namedtuple, int]
-Copy = collections.namedtuple('Copy', 'old')
 
 
 class EditDistanceAligner(Aligner):
@@ -69,9 +67,9 @@ class OptimalSubstitutionExpert(OptimalExpert):
             else:
                 valid_actions = {Ins(prefix_insert)}
             if input_not_empty:
-                if attention == prefix_insert:
-                    valid_actions.add(Copy(attention))
-                else:
+                if prefix_insert == attention:
+                    valid_actions.add(Copy(attention, prefix_insert))
+                elif prefix_insert != END:
                     # substitutions
                     valid_actions.add(Sub(old=attention, new=prefix_insert))
                 valid_actions.add(Del(attention))
@@ -88,18 +86,17 @@ class OptimalSubstitutionExpert(OptimalExpert):
                 if isinstance(action, Del):
                     x_offset = i + 1
                     t_offset = suffix_begin
-                elif isinstance(action, Copy):
+                elif isinstance(action, Ins):
+                    x_offset = i
+                    t_offset = suffix_begin + 1
+                elif isinstance(action, Sub):
                     x_offset = i + 1
                     t_offset = suffix_begin + 1
                 elif action == END:
                     x_offset = i
                     t_offset = suffix_begin
-                elif isinstance(action, Ins):
-                    x_offset = i
-                    t_offset = suffix_begin + 1
                 else:
-                    x_offset = i + 1
-                    t_offset = suffix_begin + 1
+                    raise ValueError(f"Unknown action: {action}")
                 sequence_cost = self.aligner.action_sequence_cost(
                     x, t, x_offset, t_offset)
                 action_cost = self.aligner.action_cost(action)

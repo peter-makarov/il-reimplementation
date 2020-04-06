@@ -6,7 +6,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple,\
     Union
 
 import abc
-from collections import namedtuple
 import math
 import multiprocessing
 import numbers
@@ -15,6 +14,9 @@ import pickle
 
 import numpy as np
 from scipy.special import logsumexp
+
+
+from trans.actions import Aligner, Sub, Del, Ins
 
 
 ParamDict = Union[
@@ -26,23 +28,6 @@ TOL = 10 ** -10
 
 EOS = '<#>'  # end of sequence symbol
 UNK = '࿋'  # '<unk>'
-
-
-Sub = namedtuple('Sub', 'old new')
-Del = namedtuple('Del', 'old')
-Ins = namedtuple('Ins', 'new')
-
-
-class Aligner(abc.ABC):
-
-    @abc.abstractmethod
-    def action_sequence_cost(self, x: Sequence[Any], y: Sequence[Any],
-                             x_offset: int, y_offset: int) -> float:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def action_cost(self, action: Any) -> float:
-        raise NotImplementedError
 
 
 class StochasticEditDistance(Aligner):
