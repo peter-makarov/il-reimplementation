@@ -234,6 +234,14 @@ class Transducer(transducer.Transducer):
         # )
         return optimal_actions, regrets
 
+    def _valid_actions(self, encoder):
+        valid_actions = [END_WORD]  # allows to always terminate
+        valid_actions += self.INSERTS
+        if len(encoder) > 1:
+            valid_actions.extend([COPY, DELETE])
+            valid_actions += self.SUBSTITUTIONS
+        return valid_actions
+
     def transduce(self, lemma, feats, oracle_actions=None, external_cg=True,
                   sampling=False,
                   unk_avg=True, verbose=False, channel=False,
@@ -272,16 +280,6 @@ class Transducer(transducer.Transducer):
 
         # Returns an expression of the loss for the sequence of actions.
         # (that is, the oracle_actions if present or the predicted sequence otherwise)
-        def _valid_actions(encoder):
-            valid_actions = []
-            if len(encoder) > 1:
-                valid_actions += [COPY, DELETE]
-                valid_actions += self.SUBSTITUTIONS
-            else:
-                valid_actions += [END_WORD]
-            valid_actions += self.INSERTS
-            return valid_actions
-
         if not external_cg:
             dy.renew_cg()
 
@@ -350,7 +348,7 @@ class Transducer(transducer.Transducer):
 
             # compute probability of each of the actions and choose an action
             # either from the oracle or if there is no oracle, based on the model
-            valid_actions = _valid_actions(encoder)
+            valid_actions = self._valid_actions(encoder)
             encoder_embedding = encoder.embedding()
             # decoder
             decoder_input = dy.concatenate([encoder_embedding,
@@ -480,15 +478,6 @@ class Transducer(transducer.Transducer):
                            beam_width=4):
         # Returns an expression of the loss for the sequence of actions.
         # (that is, the oracle_actions if present or the predicted sequence otherwise)
-        def _valid_actions(encoder):
-            valid_actions = []
-            if len(encoder) > 1:
-                valid_actions += [COPY, DELETE]
-                valid_actions += self.SUBSTITUTIONS
-            else:
-                valid_actions += [END_WORD]
-            valid_actions += self.INSERTS
-            return valid_actions
 
         if not external_cg:
             dy.renew_cg()
@@ -547,7 +536,7 @@ class Transducer(transducer.Transducer):
             # print 'Beam length: ', beam_length
             for decoder, encoder, prev_actions, log_p, log_p_expr, word in beam:
                 # print 'Expansion: ', action2string(prev_actions, self.vocab), log_p, ''.join(word)
-                valid_actions = _valid_actions(encoder)
+                valid_actions = self._valid_actions(encoder)
                 # decoder
                 decoder_input = dy.concatenate([encoder.embedding(),
                                                 features,
