@@ -3,7 +3,8 @@ import os
 from trans.defaults import DATA_PATH, RESULTS_PATH, NULL_ARGS
 from trans.aligners import smart_align, dumb_align, cls_align
 from trans import datasets
-from trans import transducer
+#from trans import transducer
+from trans import full_transducer as transducer
 from trans import hard
 
 def process_paths(arguments):

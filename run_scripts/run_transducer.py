@@ -118,6 +118,9 @@ from trans.args_processor import process_arguments
 from trans.datasets import BaseDataSet
 from trans.trainer import TrainingSession, dev_external_eval, test_external_eval
 
+from trans.optimal_expert_substitutions import OptimalSubstitutionExpert
+from trans.sed import StochasticEditDistance
+
 import json
 #import sys
 #import codecs
@@ -152,6 +155,12 @@ if __name__ == "__main__":
     batch_size = optim_arguments['decbatch-size']
     dev_batches = [dev_data.samples[i:i+batch_size] for i in range(0, len(dev_data), batch_size)]
     model = None
+
+    with open(paths['train_path']) as f:
+        train_lines = f.readlines()
+    sed_aligner = StochasticEditDistance.fit_from_data(train_lines, em_iterations=1)
+    expert = OptimalSubstitutionExpert(sed_aligner)
+    model_arguments['expert'] = expert
 
     if not optim_arguments['eval']:
 

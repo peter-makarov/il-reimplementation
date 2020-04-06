@@ -44,6 +44,10 @@ class BaseDataSample(object):
                     lemma_str, word_str, feat_str, sample_weight = row
                     sample_weight = float(sample_weight)
                     assert sample_weight, row
+                if no_feat_format:
+                    lemma_str, word_str = row
+                    feat_str = ''
+                    sample_weight = None
                 else:
                     lemma_str, word_str, *feat_str = row
                     feat_str = feat_str[0]
