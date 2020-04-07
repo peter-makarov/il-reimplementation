@@ -242,6 +242,14 @@ class Transducer(transducer.Transducer):
             valid_actions += self.SUBSTITUTIONS
         return valid_actions
 
+    def action_to_string(self, action: int) -> str:
+        if action in self.vocab.act.i2w:
+            return self.vocab.act.i2w[action]
+        else:
+            # substitution
+            insert_code = self.SUBSTITUTION_MAP[action]
+            return f"+Sub({self.vocab.act.i2w[insert_code]})+"
+
     def transduce(self, lemma, feats, oracle_actions=None, external_cg=True,
                   sampling=False,
                   unk_avg=True, verbose=False, channel=False,
@@ -338,7 +346,7 @@ class Transducer(transducer.Transducer):
         while len(action_history) <= MAX_ACTION_SEQ_LEN:
 
             if verbose and not dynamic:
-                print('Action: ', count, self.vocab.act.i2w[action_history[-1]])
+                print('Action: ', count, self.action_to_string(action_history[-1]))
                 print('Encoder length, char: ', lemma, len(encoder),
                       self.vocab.char.i2w[encoder.s[-1][-1]])
                 print('word: ', u''.join(word))
@@ -381,11 +389,12 @@ class Transducer(transducer.Transducer):
                 optim_actions, costs = self.expert_rollout(
                     word, target_word, encoder.get_extra(), valid_actions)
 
-                # print(
-                #     f"""
-                #     optimal_actions2: {optim_actions2}
-                #     costs2: {costs2}
-                #     """)
+                if verbose == 2:
+                    print(
+                        f"""
+                        optimal_actions: {optim_actions}
+                        costs: {costs}
+                        """)
 
                 log_probs = dy.log_softmax(logits, valid_actions)
                 log_probs_np = log_probs.npvalue()
@@ -394,7 +403,7 @@ class Transducer(transducer.Transducer):
                     action = sample(log_probs_np)
                     # @TODO IL learned roll-ins are done with policy i.e. greedy / beam search decoding
                     if verbose: print('Rolling in with model: ', action,
-                                      self.vocab.act.i2w[action])
+                                      self.action_to_string(action))
                 else:
                     # action is picked from optim_actions
                     action = optim_actions[
@@ -426,7 +435,7 @@ class Transducer(transducer.Transducer):
                 losses.append(loss)
                 # print 'Action'
                 # print action
-                # print self.vocab.act.i2w[action]
+                # print self.action_to_string(action)
             else:
                 # training with static oracle
                 action = oracle_actions.pop()
@@ -435,7 +444,7 @@ class Transducer(transducer.Transducer):
 
             action_history.append(action)
 
-            # print 'action, log_probs: ', action, self.vocab.act.i2w[action], losses[-1].scalar_value(), log_probs.npvalue()
+            # print 'action, log_probs: ', action, self.action_to_string(action), losses[-1].scalar_value(), log_probs.npvalue()
 
             # execute the action to update the transducer state
             if action == COPY:
