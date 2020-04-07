@@ -552,19 +552,19 @@ class StochasticEditDistance(Aligner):
     def action_sequence_cost(self, x: Sequence[Any], y: Sequence[Any],
                              x_offset: int, y_offset: int) -> float:
 
-        return self.viterbi_distance(source=x[x_offset:], target=y[y_offset:])
+        return -self.viterbi_distance(source=x[x_offset:], target=y[y_offset:])
 
     def action_cost(self, action: Any) -> float:
         if isinstance(action, Del):
-            return self.delta_del.get(action.old, self.default)
+            return -self.delta_del.get(action.old, self.default)
         elif isinstance(action, Ins):
-            return self.delta_ins.get(action.new, self.default)
+            return -self.delta_ins.get(action.new, self.default)
         elif isinstance(action, Sub):
-            return self.delta_sub.get(
+            return -self.delta_sub.get(
                 (action.old, action.new), self.default)
         elif isinstance(action, int):
-            return self.delta_eos
+            return -self.delta_eos
         else:
-            return self.delta_sub.get(
+            return -self.delta_sub.get(
                 (action.old, action.old), self.default)
 

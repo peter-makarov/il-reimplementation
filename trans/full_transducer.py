@@ -135,7 +135,7 @@ class Transducer(transducer.Transducer):
                     y={y}
                     """
                 )
-            remapped_action_scores[remapped_action] = -score
+            remapped_action_scores[remapped_action] = score
         # print(
         #     f"""
         #     x={x}

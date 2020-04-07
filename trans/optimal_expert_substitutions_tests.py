@@ -67,7 +67,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         t = "abbbbbbb"
         y = "bbbbbbb"
         action_scores = expert.score(x, t, i, y)
-        optimal_action, _ = max_dict(action_scores)
+        optimal_action, _ = min_dict(action_scores)
         expected_actions = {optimal_expert.END, Ins("b")}
         self.assertSetEqual(expected_actions, set(action_scores.keys()))
         self.assertEqual(optimal_expert.END, optimal_action)
@@ -99,7 +99,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
 
         while True:
             action_scores = expert.score(x, t, i, y)
-            action, score = max_dict(action_scores)
+            action, score = min_dict(action_scores)
             if verbose:
                 print(action_scores)
                 print(f"optimal action: {action, score}\n")
@@ -123,11 +123,11 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         self.assertFalse(isinstance(Sub(1, 2), Copy))
 
 
-def max_dict(d):
-    x = [(-v, i, k) for i, (k, v) in enumerate(d.items())]
+def min_dict(d):
+    x = [(v, i, k) for i, (k, v) in enumerate(d.items())]
     heapq.heapify(x)
     v, _, k = heapq.heappop(x)
-    return k, -v
+    return k, v
 
 
 if __name__ == "__main__":
