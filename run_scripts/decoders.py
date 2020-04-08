@@ -30,7 +30,7 @@ Options:
   --action-input=ACTION         action embedding dimension [default: 100]
   --pos-emb                     embedding POS (or the first feature in the sequence of features) as a non-atomic feature
   --avm-feat-format             features are treated as an attribute-value matrix (`=` pairs attributes with values)
-  --compact-feat=COMPACT-FEAT   non-linearly map resulting feature vector to this dimension [default: 400]
+  --compact-feat=COMPACT-FEAT   non-linearly map resulting feature vector to this dimension [default: 0]
   --compact-nonlin=COMP-NONLIN  if compact-feat, apply this non-linearity to compact-feat dimensional feature vector.
                                     ReLU/tanh/linear [default: linear]
   --enc-hidden=HIDDEN           hidden layer dimension of encoder RNNs [default: 200]
@@ -71,6 +71,15 @@ from collections import defaultdict
 import json
 
 ENCODING = 'utf8'
+
+
+def action_sequence_as_string(actions, vocab):
+    action_sequence_to_string = getattr(
+        transducer, "action_sequence_to_string", None)
+    if action_sequence_to_string is None:
+        return action2string(actions, vocab)
+    else:
+        return transducer.action_sequence_to_string(actions)
 
 
 def compute_channel(name, batches, transducer, vocab):
@@ -117,7 +126,7 @@ def compute_channel(name, batches, transducer, vocab):
                 print(e)
                 predicted_actions = []
                 loss = -np.inf
-            pred_acts.append(action2string(predicted_actions, vocab))
+            pred_acts.append(action_sequence_as_string(predicted_actions, vocab))
             log_prob.append(dy.esum(loss).value())  # sum log probabilities of actions
             candidates.append(sample.lemma_str)
             features.append(sample.feat_str)
@@ -180,7 +189,7 @@ def sample(name, batches, inverse_temperature, sample_size, transducer, vocab, k
                     candidates.append(prediction)
                     #print('Draw: ', prediction, action2string(predicted_actions, vocab))
             results = {'candidates': candidates, 'log_prob': log_prob,
-                       'acts': [action2string(pa, vocab) for pa in pred_acts],
+                       'acts': [action_sequence_as_string(pa, vocab) for pa in pred_acts],
                        'target': sample.word_str}
             output[sample.lemma_str][sample.feat_str] = results
         # report progress
@@ -215,7 +224,9 @@ def beam(name, batches, beam_width, transducer, vocab):
             for loss, _loss_expr, prediction, predicted_actions in hypotheses:
                 # i.e. ordered from best to `beam_width`-worst
                 log_prob.append(loss)  # NB already float
-                pred_acts.append(action2string(predicted_actions, vocab))
+                predicted_actions_as_string = action_sequence_as_string(
+                    predicted_actions, vocab)
+                pred_acts.append(predicted_actions_as_string)
                 candidates.append(prediction)
 
             results = {'candidates': candidates, 'log_prob': log_prob, 'acts': pred_acts, 'target': sample.word_str}
@@ -299,6 +310,7 @@ if __name__ == "__main__":
     VOCAB.train_cutoff()  # knows that entities before come from train set
 
     model = dy.Model()
+    model_arguments['expert'] = None
     transducer = model_arguments['transducer'](model, VOCAB, **model_arguments)
     print('Trying to load model from: {}'.format(paths['reload_model_path']))
     model.populate(paths['reload_model_path'])

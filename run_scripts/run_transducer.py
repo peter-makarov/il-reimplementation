@@ -37,7 +37,7 @@ Options:
   --action-input=ACTION         action embedding dimension [default: 100]
   --pos-emb                     embedding POS (or the first feature in the sequence of features) as a non-atomic feature
   --avm-feat-format             features are treated as an attribute-value matrix (`=` pairs attributes with values)
-  --compact-feat=COMPACT-FEAT   non-linearly map resulting feature vector to this dimension [default: 400]
+  --compact-feat=COMPACT-FEAT   non-linearly map resulting feature vector to this dimension [default: 0]
   --compact-nonlin=COMP-NONLIN  if compact-feat, apply this non-linearity to compact-feat dimensional feature vector.
                                     ReLU/tanh/linear [default: linear]
   --enc-hidden=HIDDEN           hidden layer dimension of encoder RNNs [default: 200]

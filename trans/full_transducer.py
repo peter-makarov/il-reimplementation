@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Iterable, List, Tuple
 
 import dynet as dy
 import numpy as np
@@ -241,6 +241,10 @@ class Transducer(transducer.Transducer):
             valid_actions.extend([COPY, DELETE])
             valid_actions += self.SUBSTITUTIONS
         return valid_actions
+
+    def action_sequence_to_string(self, actions: Iterable[int]) -> str:
+        actions_as_strings = [self.action_to_string(a) for a in actions]
+        return "".join(actions_as_strings)
 
     def action_to_string(self, action: int) -> str:
         if action in self.vocab.act.i2w:
