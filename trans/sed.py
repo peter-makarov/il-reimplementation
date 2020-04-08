@@ -80,7 +80,7 @@ class StochasticEditDistance(Aligner):
     def build_sed(self,
                   source_alphabet: Iterable[Any],
                   target_alphabet: Iterable[Any],
-                  discount: Optional[float] = None):
+                  discount: float):
 
         self.source_alphabet: Set[Any] = set(source_alphabet)
         self.target_alphabet: Set[Any] = set(target_alphabet)
@@ -92,8 +92,9 @@ class StochasticEditDistance(Aligner):
         self.N = self.len_source_alphabet * self.len_target_alphabet + \
                  self.len_source_alphabet + self.len_target_alphabet + 1
 
-        if discount is None:
-            self.default = discount
+        if discount < 0.:
+            # sparse Dirichlet prior
+            self.default = np.log(10**-5 / self.N)
         else:
             self.default = \
                 np.log(discount / self.N)  # log probability of unseen edits
@@ -294,27 +295,59 @@ class StochasticEditDistance(Aligner):
             Normalize probabilities and assign them to the channel's deltas.
             :param discount: Unnormalized quantity for edits unseen in training.
             """
-            # all mass to distribute among edits
-            denom = np.log(
-                self.eos + sum(self.del_.values()) + sum(self.ins.values()) +
-                sum(self.sub.values()) + self.sed.discount * self.sed.N
-            )
-            self.sub = {
-                k: np.log(self.sub[k] + self.sed.discount) - denom
-                for k in self.sub
-            }
-            self.del_ = {
-                k: np.log(self.del_[k] + self.sed.discount) - denom
-                for k in self.del_
-            }
-            self.ins = {
-                k: np.log(self.ins[k] + self.sed.discount) - denom
-                for k in self.ins
-            }
-            self.eos = np.log(self.eos + self.sed.discount) - denom
+            if self.sed.discount < 0.:
+                # applies sparse Dirichlet prior, see Johnson et al. 2007 NAACL
+                self.sub = {
+                    k: max(0, self.sub[k] + self.sed.discount)
+                    for k in self.sub
+                }
+                self.del_ = {
+                    k: max(0, self.del_[k] + self.sed.discount)
+                    for k in self.del_
+                }
+                self.ins = {
+                    k: max(0, self.ins[k] + self.sed.discount)
+                    for k in self.ins
+                }
+                self.eos = max(0, self.eos + self.sed.discount)
 
-            assert len(self.sub) + len(self.del_) + len(
-                self.ins) + 1 == self.sed.N
+                denom = np.log(
+                    self.eos + sum(self.del_.values()) + sum(self.ins.values()) +
+                    sum(self.sub.values())
+                )
+
+                self.sub = {
+                    k: (np.log(v) - denom) for k, v in self.sub.items() if v > 0
+                }
+                self.del_ = {
+                    k: (np.log(v) - denom) for k, v in self.del_.items() if v > 0
+                }
+                self.ins = {
+                    k: (np.log(v) - denom) for k, v in self.ins.items() if v > 0
+                }
+                self.eos = np.log(self.eos) - denom
+            else:
+                # all mass to distribute among edits
+                denom = np.log(
+                    self.eos + sum(self.del_.values()) + sum(self.ins.values()) +
+                    sum(self.sub.values()) + self.sed.discount * self.sed.N
+                )
+                self.sub = {
+                    k: np.log(self.sub[k] + self.sed.discount) - denom
+                    for k in self.sub
+                }
+                self.del_ = {
+                    k: np.log(self.del_[k] + self.sed.discount) - denom
+                    for k in self.del_
+                }
+                self.ins = {
+                    k: np.log(self.ins[k] + self.sed.discount) - denom
+                    for k in self.ins
+                }
+                self.eos = np.log(self.eos + self.sed.discount) - denom
+
+                assert len(self.sub) + len(self.del_) + len(
+                    self.ins) + 1 == self.sed.N
             check_sum = logsumexp(
                 list(self.sub.values()) + list(self.del_.values()) +
                 list(self.ins.values()) + [self.eos]
@@ -384,15 +417,16 @@ class StochasticEditDistance(Aligner):
             for v in range(V + 1):
                 # (alpha = probability of prefix) * probability of edit * (beta = probability of suffix)
                 rest = beta[t, v] / alpha[T, V]
-                if t > 0:
+                if t > 0 and source[t - 1] in gammas.del_:
                     gammas.del_[source[t - 1]] += \
                         weight * alpha[t - 1, v] * np.exp(
                             self.delta_del[source[t - 1]]) * rest
-                if v > 0:
+                if v > 0 and target[v - 1] in gammas.ins:
                     gammas.ins[target[v - 1]] += \
                         weight * alpha[t, v - 1] * np.exp(
                             self.delta_ins[target[v - 1]]) * rest
-                if t > 0 and v > 0:
+                if (t > 0 and v > 0 and
+                        (source[t - 1], target[v - 1]) in gammas.sub):
                     gammas.sub[(source[t - 1], target[v - 1])] += \
                         weight * alpha[t - 1, v - 1] * np.exp(
                             self.delta_sub[(source[t - 1], target[v - 1])]
@@ -520,7 +554,8 @@ class StochasticEditDistance(Aligner):
 
     @classmethod
     def fit_from_data(cls, lines: Iterable[str],
-                      smart_init: bool = False, em_iterations: int = 30):
+                      smart_init: bool = False, em_iterations: int = 30,
+                      discount: float = 10 ** -5):
 
         source_alphabet = set()
         target_alphabet = set()
@@ -535,7 +570,8 @@ class StochasticEditDistance(Aligner):
                 sources.append(source)
                 targets.append(target)
 
-        sed = cls(source_alphabet, target_alphabet, smart_init=smart_init)
+        sed = cls(source_alphabet, target_alphabet, smart_init=smart_init,
+                  discount=discount)
         sed.update_model(sources, targets, em_iterations=em_iterations)
         return sed
 

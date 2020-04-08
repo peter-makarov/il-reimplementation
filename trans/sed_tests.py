@@ -94,6 +94,18 @@ class TestTransducer(unittest.TestCase):
         parameter_dictionaries = sed.parameter_dictionaries
         print(parameter_dictionaries)  # @TODO
 
+    def test_sparse_prior(self):
+
+        input_lines = [
+            "abby\ta b i", "abidjan\ta b i d ʒ ɑ", "abject\ta b ʒ ɛ k t",
+            "abolir\ta b ɔ l i ʁ", "abonnement\ta b ɔ n m ɑ"
+        ]
+
+        sed = StochasticEditDistance.fit_from_data(
+            input_lines, em_iterations=1, discount=(0.01 - 1))
+        parameter_dictionaries = sed.parameter_dictionaries
+        print(parameter_dictionaries)
+
 
 if __name__ == "__main__":
     unittest.main()
