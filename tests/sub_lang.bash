@@ -19,7 +19,7 @@
 # results-task1-sub/m+100+1+100+200+200+1+1-a20+-0.5-t+0+ADADELTA+1+10+60+12+0-x0/fre./s2/
 # RESULTSDIR=results-task1-sub-nodisc  NFK=. DYNET_SEED=2 FEAT_INPUT=1 TRAIN__BATCH_SIZE=40 BATCHSIZE=1 DEC_LAYERS=1 DROPOUT=0 ENC_LAYERS=1 SED_ALIGNER_EM_ITERATIONS=20 SED_ALIGNER_DISCOUNT=-0.5 LNG=fre bash  tests/sub_lang.bash 
 # RESULTSDIR=results-task1-sub-nodisc  NFK=. DYNET_SEED=2 FEAT_INPUT=1  BATCHSIZE=1 DEC_LAYERS=1 DROPOUT=0 ENC_LAYERS=1 SED_ALIGNER_EM_ITERATIONS=20 SED_ALIGNER_DISCOUNT=-0.5 LNG=fre bash  tests/sub_lang.bash 
-# RESULTSDIR=results-task1-sub-nodisc  NFK=. DYNET_SEED=2 FEAT_INPUT=1  BATCHSIZE=1 DEC_LAYERS=1 DROPOUT=0 ENC_LAYERS=1 SED_ALIGNER_EM_ITERATIONS=1 SED_ALIGNER_DISCOUNT=-0.5 EPOCHS=1 LNG=fre bash  tests/sub_lang.bash 
+# RESULTSDIR=results-task1-sub-nodisc  NFK=. DYNET_SEED=2 FEAT_INPUT=1  BATCHSIZE=1 DEC_LAYERS=1 DROPOUT=0 ENC_LAYERS=1 EPOCHS=1 SED_ALIGNER_EM_ITERATIONS=1 SED_ALIGNER_DISCOUNT=-0.5 EPOCHS=1 LNG=hin bash  tests/sub_lang.bash 
 
 # if called with ALT_BATCH_SIZE variable set then the training is done with TRAIN__BATCH_SIZE, but the directory does not change 
 : "${RESULTSDIR:=results-task1-sub}"
@@ -57,23 +57,26 @@ sigm17rurtl="tests/sgm2020data/train/${LNG}_train${NFK}tsv"
 sigm17rutest="tests/sgm2020data/test/${LNG}_test${NFK}tsv"
 results="${RESULTSDIR}/m+${INPUT}+${FEAT_INPUT}+${ACTION_INPUT}+${ENC_HIDDEN}+${DEC_HIDDEN}+${ENC_LAYERS}+${DEC_LAYERS}-a${SED_ALIGNER_EM_ITERATIONS}+${SED_ALIGNER_DISCOUNT}-t+${DROPOUT}+${OPTIMIZATION}+${BATCH_SIZE}+${PATIENCE}+${EPOCHS}+${IL_K}+${PICK_LOSS}-x${VARIANT}/${LNG}${NFK}/s${DYNET_SEED}"
 
-LOGFILE=$(mktemp /tmp/il-reimplementation.XXXXXXXXX)
+#LOGFILE=$(mktemp /tmp/il-reimplementation.XXXXXXXXX)
 
 : "${TRAIN__BATCH_SIZE=${BATCH_SIZE}}"
 : "${TRAIN__DROPOUT=${DROPOUT}}"
 : "${TRAIN__PATIENCE=${PATIENCE}}"
 
 
-echo "tail -f ${LOGFILE} # for watching log for	 ${results} "
+
 
 if test "${RELOAD}" = "1" ; then
 if test -e ${results}/f.model ; then
 	RELOADPATH="--reload-path=${results}"
 else 
 	echo "ERROR: RELOAD MODE, BUT MISSING ${results}/f.model"
-	exit 2
 fi
 fi
+
+mkdir -p $results
+LOGFILE=${results}/transducer.log
+echo "tail -f ${LOGFILE} # for watching log for	 ${results} "
 python -u run_scripts/run_transducer.py --dynet-seed ${DYNET_SEED} --dynet-mem 1500 --dynet-autobatch 0  --no-feat-format  --transducer=haem --sigm2017format \
 --input=${INPUT} --feat-input=${FEAT_INPUT} --compact-feat=1 --compact-nonlin=linear --action-input=${ACTION_INPUT} --pos-emb  --enc-hidden=${ENC_HIDDEN} --dec-hidden=${DEC_HIDDEN} --enc-layers=${ENC_LAYERS} \
 --dec-layers=${DEC_LAYERS}   --mlp=0 --nonlin=ReLU --il-optimal-oracle --il-loss=nll --il-beta=0.5 --il-global-rollout \
