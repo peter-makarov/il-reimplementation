@@ -7,6 +7,7 @@ import sys
 import codecs
 import collections
 import numpy as np
+import unicodeddata
 #from sklearn.metrics import cohen_kappa_score
 
 """
@@ -80,6 +81,7 @@ def read_golden(filepath):
     GOLDEN = []
     with codecs.open(filepath,'r',encoding="utf-8") as f:
         for l in f:
+            l = unicodedata.normalize('NFKC', l)
             l = l.rstrip().split('\t')
             GOLDEN.append(l[1])
     return GOLDEN
@@ -89,6 +91,7 @@ def read_files(args):
     for arg in args:
         with codecs.open(arg,'r',encoding="utf-8") as f:
             for i,l in enumerate(f):
+                l = unicodedata.normalize('NFKC', l)
                 ROWS[arg] += 1
                 SYSTEMS[i][l.strip()] += 1   # l.strip() produces errors!!!!
         print('#INFO, file %s contains %d items'%(arg,ROWS[arg]), file=sys.stderr)
