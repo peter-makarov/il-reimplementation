@@ -122,12 +122,7 @@ from trans.optimal_expert_substitutions import OptimalSubstitutionExpert
 from trans.sed import StochasticEditDistance
 
 import json
-#import sys
-#import codecs
-#sys.stdout = codecs.getwriter('utf-8')(sys.__stdout__)
-#sys.stderr = codecs.getwriter('utf-8')(sys.__stderr__)
-#sys.stdin = codecs.getreader('utf-8')(sys.__stdin__)
-
+import os
 
 if __name__ == "__main__":
 
@@ -158,7 +153,11 @@ if __name__ == "__main__":
 
     with open(paths['train_path']) as f:
         train_lines = f.readlines()
-    sed_aligner = StochasticEditDistance.fit_from_data(train_lines, em_iterations=10)  # , discount=(0.001 - 1))
+    print(f"""Sed aligner em_iterations={os.environ.get("SED_ALIGNER_EM_ITERATIONS", 10)}"""
+    f""" discount={os.environ.get("SED_ALIGNER_DISCOUNT", -10)}""")
+    sed_aligner = StochasticEditDistance.fit_from_data(train_lines,
+        em_iterations=int(os.environ.get("SED_ALIGNER_EM_ITERATIONS", 10)),
+        discount=float(os.environ.get("SED_ALIGNER_DISCOUNT", -10)))
     expert = OptimalSubstitutionExpert(sed_aligner)
     model_arguments['expert'] = expert
 
@@ -179,7 +178,7 @@ if __name__ == "__main__":
 
         if (optim_arguments['pretrain-epochs'] or optim_arguments['pretrain-until']) and \
             optim_arguments['mode'] != 'ss':
-            
+
             pretrain_epochs = optim_arguments['pretrain-epochs']
             train_until_accuracy = optim_arguments['pretrain-until']
             if pretrain_epochs:

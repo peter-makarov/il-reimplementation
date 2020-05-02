@@ -302,20 +302,25 @@ class StochasticEditDistance(Aligner):
                     for k in self.sub
                 }
                 self.del_ = {
-                    k: max(0, self.del_[k] + self.sed.discount)
+#                    k: max(0, self.del_[k])
+                    k: max(0, self.del_[k] + self.sed.discount/2)
                     for k in self.del_
                 }
                 self.ins = {
-                    k: max(0, self.ins[k] + self.sed.discount)
+                    k: max(0, self.ins[k] + self.sed.discount/2)
+#                    k: max(0, self.ins[k] )
                     for k in self.ins
                 }
-                self.eos = max(0, self.eos + self.sed.discount)
+                self.eos = max(0, self.eos + self.sed.discount) # avoid eos = 0
+ #               self.eos = max(0, self.eos ) # avoid eos = 0
 
                 denom = np.log(
                     self.eos + sum(self.del_.values()) + sum(self.ins.values()) +
                     sum(self.sub.values())
                 )
-
+                if np.isnan(denom):
+                    valx = self.eos + sum(self.del_.values()) + sum(self.ins.values()) + sum(self.sub.values())
+                    print(f"denom: {valx}")
                 self.sub = {
                     k: (np.log(v) - denom) for k, v in self.sub.items() if v > 0
                 }
@@ -352,6 +357,11 @@ class StochasticEditDistance(Aligner):
                 list(self.sub.values()) + list(self.del_.values()) +
                 list(self.ins.values()) + [self.eos]
             )
+            if True:
+                print(f"sub {len(self.sub)}: { {p[0]:round(p[1],3) for p in sorted(self.sub.items(), key=lambda kv: -kv[1]) } }")
+                print(f"del {len(self.del_)}: { {p[0]:round(p[1],3) for p in sorted(self.del_.items(), key=lambda kv: -kv[1]) } }")
+                print(f"ins {len(self.ins)}: { {p[0]:round(p[1],3) for p in sorted(self.ins.items(), key=lambda kv: -kv[1]) } }")
+                print(f"eos 1: {[self.eos]}")
             assert np.isclose(0., check_sum), check_sum
             # set the channel's delta to log normalized gammas
             self.sed.delta_eos = self.eos
@@ -390,6 +400,8 @@ class StochasticEditDistance(Aligner):
                         print('Weight is below TOL. Skipping: ', source, target,
                               weight)
                     continue
+                if len(target) > 400:
+                    continue
                 self.expectation_step(source, target, gammas, weight)
                 if test and sample_num > 0 and sample_num % 1000 == 0:
                     print(f'\t...processed {sample_num} samples')
@@ -417,6 +429,10 @@ class StochasticEditDistance(Aligner):
             for v in range(V + 1):
                 # (alpha = probability of prefix) * probability of edit * (beta = probability of suffix)
                 rest = beta[t, v] / alpha[T, V]
+                if np.isnan(rest):
+                    print(f"rest is NAN {beta[t, v]}/ {alpha[T, V]} T{T} V{V}")
+                    print(f"for pair target{target} source{source}")
+                    return
                 if t > 0 and source[t - 1] in gammas.del_:
                     gammas.del_[source[t - 1]] += \
                         weight * alpha[t - 1, v] * np.exp(

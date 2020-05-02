@@ -59,7 +59,7 @@ class BaseDataSample(object):
                 lemma_str, feat_str, *word_str = row
                 word_str = word_str[0]
                 sample_weight = None
-        except ValueError as e:
+        except (IndexError,ValueError) as e:
             print(row)
             raise e
         # encode features as integers
