@@ -83,9 +83,9 @@ $(eval \
               $(foreach il_k,$(IL_K_SET),\
               $(foreach pick_loss,$(PICK_LOSS_SET),\
                $(foreach variant,$(VARIANT_SET),\
+                $(foreach dynet_seed,$(DYNET_SEED),\
                 $(foreach lng,$(LNG_SET),\
                  $(foreach nfk,$(NFK),\
-                  $(foreach dynet_seed,$(DYNET_SEED),\
 $(VLNBR_TMPL))))))))))))))))))))))
 
 
