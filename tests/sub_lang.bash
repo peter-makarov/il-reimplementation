@@ -42,19 +42,22 @@
 : "${SED_ALIGNER_EM_ITERATIONS:=20}"
 : "${SED_ALIGNER_DISCOUNT:=-0.5}"
 : "${PICK_LOSS:=0}"
+: "${RELOAD:=1}"
 
 if test ${PICK_LOSS} = "1" ; then
 export PICK_LOSS=1
 export PICK_LOSS_OPTION=--pick-loss
 fi
 
-LOGFILE=$(mktemp /tmp/il-reimplementation.XXXXXXXXX)
+
 
 sigm17rudev="tests/sgm2020data/dev/${LNG}_dev${NFK}tsv"
 sigm17rurtl="tests/sgm2020data/train/${LNG}_train${NFK}tsv"
 #results="results/sub-0.0005-batch1-.2-200-2-1/${LNG}/"
 sigm17rutest="tests/sgm2020data/test/${LNG}_test${NFK}tsv"
 results="${RESULTSDIR}/m+${INPUT}+${FEAT_INPUT}+${ACTION_INPUT}+${ENC_HIDDEN}+${DEC_HIDDEN}+${ENC_LAYERS}+${DEC_LAYERS}-a${SED_ALIGNER_EM_ITERATIONS}+${SED_ALIGNER_DISCOUNT}-t+${DROPOUT}+${OPTIMIZATION}+${BATCH_SIZE}+${PATIENCE}+${EPOCHS}+${IL_K}+${PICK_LOSS}-x${VARIANT}/${LNG}${NFK}/s${DYNET_SEED}"
+
+LOGFILE=$(mktemp /tmp/il-reimplementation.XXXXXXXXX)
 
 : "${TRAIN__BATCH_SIZE=${BATCH_SIZE}}"
 : "${TRAIN__DROPOUT=${DROPOUT}}"
@@ -83,10 +86,10 @@ mv ${LOGFILE} ${results}/transducer.log
 python run_scripts/decoders.py  --dynet-seed ${DYNET_SEED} --dynet-mem 3000 --dynet-autobatch 1  --transducer=haem  --no-feat-format  --sigm2017format \
 --input=${INPUT} --feat-input=${FEAT_INPUT} --compact-feat=1 --compact-nonlin=linear --action-input=${ACTION_INPUT} --pos-emb --enc-hidden=${ENC_HIDDEN} --dec-hidden=${DEC_HIDDEN} --enc-layers=${ENC_LAYERS} --dec-layers=${DEC_LAYERS} \
 --tag-wraps=both --param-tying --mlp=0 --nonlin=ReLU --verbose=0 \
---decoding-mode=beam --dec-temperature=1 --dec-sample-size=20 --dec-keep-sampling --beam-width=8 --test-path=${sigm17rutest}\
-$sigm17rurtl  $sigm17rudev  $results
+--decoding-mode=beam --dec-temperature=1 --dec-sample-size=20 --dec-keep-sampling --beam-width=8 --test-path=${sigm17rutest} \
+$sigm17rurtl  $sigm17rudev  $results &> ${results}/decoder.log
 
-python run_scripts/eval_beam.py ${results}/dev_beam.json >  ${results}/dev_beam.wrong.json
+python run_scripts/eval_beam.py ${results}/dev_beam.json >  ${results}/dev_beam.wrong.json 2> ${results}/dev_beam.wrong.json.log
 
 # official greedy eval
 
