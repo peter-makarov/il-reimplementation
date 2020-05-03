@@ -7,7 +7,7 @@ import sys
 import codecs
 import collections
 import numpy as np
-import unicodeddata
+import unicodedata
 #from sklearn.metrics import cohen_kappa_score
 
 """
