@@ -70,7 +70,7 @@ if test "${RELOAD}" = "1" ; then
 if test -e ${results}/f.model ; then
 	RELOADPATH="--reload-path=${results}"
 else 
-	echo "ERROR: RELOAD MODE, BUT MISSING ${results}/f.model"
+	echo "WARNING: RELOAD MODE, BUT MISSING ${results}/f.model  ... NOT RELOADING..."
 fi
 fi
 
@@ -83,7 +83,7 @@ python -u run_scripts/run_transducer.py --dynet-seed ${DYNET_SEED} --dynet-mem 1
 --dropout=${TRAIN__DROPOUT} --optimization=${OPTIMIZATION} --l2=0  --batch-size=${TRAIN__BATCH_SIZE}  --decbatch-size=25  --patience=${TRAIN__PATIENCE} --epochs=${EPOCHS} \
 --tag-wraps=both --param-tying  --mode=il  --il-k=${IL_K} ${PICK_LOSS_OPTION} --beam-width=8 --beam-widths=4,8 --test-path=${sigm17rutest}  ${RELOADPATH} $sigm17rurtl  $sigm17rudev   $results &> ${LOGFILE}
 
-mv ${LOGFILE} ${results}/transducer.log
+#mv ${LOGFILE} ${results}/transducer.log
 
 
 python run_scripts/decoders.py  --dynet-seed ${DYNET_SEED} --dynet-mem 3000 --dynet-autobatch 1  --transducer=haem  --no-feat-format  --sigm2017format \
