@@ -21,16 +21,19 @@ OPTIMIZATION_SET ?= ADADELTA
 BATCH_SIZE_SET ?= 5
 PATIENCE_SET ?= 12
 EPOCHS_SET ?= 60
-IL_K_SET ?= 12
+IL_K_SET ?= 1
 PICK_LOSS_SET ?= 0
 VARIANT_SET ?= 0
 LNG_SET ?= ady arm bul dut fre geo gre hin hun ice jpn kor lit rum vie 
-NFK ?=   . .nfd.  
-DYNET_SEED ?=  4 5 6
+NFK ?=   . .nfd. .nfdd. 
+DYNET_SEED ?=  1 
 doit: 
 	echo $(info training-done-files $(training-done-files))
 
-
+# .nfd. is better for 
+# LNG_SET="ady arm bul fre geo hin hun ice jpn kor lit rum vie "
+# .nfd. is worse for 
+# LNG_SET="dut gre"
 
 # Template fuer das Kopieren vom build-Ordner in den Distributionsordner
 define VLNBR_TMPL
