@@ -1,17 +1,4 @@
-import os
-from setuptools import setup, Extension
-from distutils import sysconfig
-from distutils.command.build_ext import build_ext
-
-libalign = Extension('trans.libalign', sources=['trans/align.c'])
-
-
-class NoSuffixBuilder(build_ext):
-    def get_ext_filename(self, ext_name):
-        filename = super().get_ext_filename(ext_name)
-        suffix = sysconfig.get_config_var('EXT_SUFFIX')
-        ext = os.path.splitext(filename)[1]
-        return filename.replace(suffix, "") + ext
+from setuptools import setup
 
 
 setup(name='neural_transducer',
@@ -22,10 +9,6 @@ setup(name='neural_transducer',
       author_email='makarov@cl.uzh.ch',
       license='MIT',
       packages=['trans'],
-      ext_modules=[libalign],
-      cmdclass={
-        "build_ext": NoSuffixBuilder,
-      },
       install_requires=[
         "Cython==0.29",
         "docopt==0.6.2",
