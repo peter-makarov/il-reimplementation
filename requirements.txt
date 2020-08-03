@@ -1,3 +1,4 @@
+wheel==0.34.2
 Cython==0.29
 docopt==0.6.2
 dyNET==2.1
