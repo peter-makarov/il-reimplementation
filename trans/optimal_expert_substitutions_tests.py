@@ -1,10 +1,11 @@
+"""Unit tests for optimal expert with substitution actions."""
 import heapq
 import unittest
 
-from trans import optimal_expert
 from trans import optimal_expert_substitutions
 from trans import sed
-from trans.actions import Copy, Del, Ins, Sub
+from trans import train
+from trans.actions import Copy, Del, Ins, Sub, EndOfSequence
 
 
 class OptimalSubstitutionExpertTests(unittest.TestCase):
@@ -20,7 +21,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         y = "walked"
         t = "walked"
         action_scores = self.optimal_expert.score(x, t, i, y)
-        expected_action_scores = {optimal_expert.END: 0}
+        expected_action_scores = {EndOfSequence(): 0}
         self.assertEqual(expected_action_scores, action_scores)
 
     def test_score_empty_strings(self):
@@ -29,7 +30,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         t = ""
         y = "a"
         action_scores = self.optimal_expert.score(x, t, i, y)
-        expected_action_scores = {optimal_expert.END: 0}
+        expected_action_scores = {EndOfSequence(): 0}
         self.assertEqual(expected_action_scores, action_scores)
 
     def test_score(self):
@@ -38,7 +39,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         t = "abbbbbbb"
         y = "bbbbbbb"
         action_scores = self.optimal_expert.score(x, t, i, y)
-        expected_action_scores = {optimal_expert.END: 0, Ins("b"): 1}
+        expected_action_scores = {EndOfSequence(): 0, Ins("b"): 1}
         self.assertEqual(expected_action_scores, action_scores)
 
     def test_correct_end(self):
@@ -58,8 +59,9 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         ]
 
         # learns to copy even when not initialized with copy bias
+        input_data = map(to_sample, input_lines)
         aligner = sed.StochasticEditDistance.fit_from_data(
-            input_lines, em_iterations=5)
+            input_data, em_iterations=5)
         expert = optimal_expert_substitutions.OptimalSubstitutionExpert(aligner)
 
         x = ""
@@ -68,9 +70,9 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         y = "bbbbbbb"
         action_scores = expert.score(x, t, i, y)
         optimal_action, _ = min_dict(action_scores)
-        expected_actions = {optimal_expert.END, Ins("b")}
+        expected_actions = {EndOfSequence(), Ins("b")}
         self.assertSetEqual(expected_actions, set(action_scores.keys()))
-        self.assertEqual(optimal_expert.END, optimal_action)
+        self.assertEqual(EndOfSequence(), optimal_action)
 
     def test_sed_aligner_real_data(self):
 
@@ -79,7 +81,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         with open("test_data/fre_train.tsv") as f:
             try:
                 for _ in range(100):
-                    input_lines.append(next(f))
+                    input_lines.append(to_sample(next(f)))
             except StopIteration:
                 pass
 
@@ -94,7 +96,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
 
         optimal_actions = iter(
             (Sub(old='e', new=' '), Sub(old='c', new='k'), Ins(new=' '),
-             Copy(old='t', new='t'), optimal_expert.END)
+             Copy(old='t', new='t'), EndOfSequence())
         )
 
         while True:
@@ -104,7 +106,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
                 print(action_scores)
                 print(f"optimal action: {action, score}\n")
                 print()
-            if action == optimal_expert.END:
+            if isinstance(action, EndOfSequence):
                 break
             if isinstance(action, Del):
                 i += 1
@@ -128,6 +130,11 @@ def min_dict(d):
     heapq.heapify(x)
     v, _, k = heapq.heappop(x)
     return k, v
+
+
+def to_sample(line: str):
+    input_, target = line.rstrip().split("\t", 1)
+    return train.Sample(input_, target, [])
 
 
 if __name__ == "__main__":

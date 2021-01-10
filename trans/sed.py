@@ -2,10 +2,9 @@
 Based on Ristad and Yianilos (1998) Learning String Edit Distance.
 (https://www.researchgate.net/publication/3192848_Learning_String_Edit_Distance)
 """
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple,\
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, \
     Union
 
-import abc
 import math
 import multiprocessing
 import numbers
@@ -16,18 +15,16 @@ import numpy as np
 from scipy.special import logsumexp
 
 
-from trans.actions import Aligner, Sub, Del, Ins
+from trans.actions import Aligner, Sub, Del, Ins, EndOfSequence
 
 
 ParamDict = Union[
     Dict[Union[Tuple[str, str], str], float],
     float]
 
+
 LARGE_NEG_CONST = -float(10 ** 6)
 TOL = 10 ** -10
-
-EOS = '<#>'  # end of sequence symbol
-UNK = '࿋'  # '<unk>'
 
 
 class StochasticEditDistance(Aligner):
@@ -55,7 +52,6 @@ class StochasticEditDistance(Aligner):
         """
         self.param_dicts = param_dicts
         self.smart_init = smart_init
-        self.EOS = EOS
         if param_dicts:
             # load dicts from file
             self.from_pickle(self.param_dicts)
@@ -569,7 +565,7 @@ class StochasticEditDistance(Aligner):
         print(f'Wrote latest model weights to "{path2pkl}".')
 
     @classmethod
-    def fit_from_data(cls, lines: Iterable[str],
+    def fit_from_data(cls, lines: Iterable[Any],
                       smart_init: bool = False, em_iterations: int = 30,
                       discount: float = 10 ** -5):
 
@@ -578,13 +574,12 @@ class StochasticEditDistance(Aligner):
         sources = []
         targets = []
         for line in lines:
-            line = line.strip()
-            if line:
-                source, target, *rest = line.split("\t")
-                source_alphabet.update(source)
-                target_alphabet.update(target)
-                sources.append(source)
-                targets.append(target)
+            source = line.input
+            target = line.target
+            source_alphabet.update(source)
+            target_alphabet.update(target)
+            sources.append(source)
+            targets.append(target)
 
         sed = cls(source_alphabet, target_alphabet, smart_init=smart_init,
                   discount=discount)
@@ -614,7 +609,7 @@ class StochasticEditDistance(Aligner):
         elif isinstance(action, Sub):
             return -self.delta_sub.get(
                 (action.old, action.new), self.default)
-        elif isinstance(action, int):
+        elif isinstance(action, EndOfSequence):
             return -self.delta_eos
         else:
             return -self.delta_sub.get(

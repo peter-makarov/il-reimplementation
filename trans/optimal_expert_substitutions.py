@@ -1,14 +1,9 @@
-from typing import Any, Iterable, List, Sequence, Union
-import collections
+from typing import Any, Iterable, List, Sequence
 
-from trans.defaults import END_WORD as END
 from trans.optimal_expert import ActionsPrefix, OptimalExpert, Prefix, edit_distance
-from trans.actions import Aligner, Copy, Del, Ins, Sub
+from trans.actions import Aligner, Copy, Del, Ins, Sub, Edit, EndOfSequence
 
 import numpy as np
-
-
-Action = Union[collections.namedtuple, int]
 
 
 class EditDistanceAligner(Aligner):
@@ -28,11 +23,17 @@ class EditDistanceAligner(Aligner):
         )
         return ed[-1, -1]
 
-    def action_cost(self, action: Action):
-        if isinstance(action, Copy) or action == END:
+    def action_cost(self, action: Edit):
+        if isinstance(action, Copy) or isinstance(action, EndOfSequence):
             return 0
+        elif isinstance(action, Del):
+            return self.del_cost
+        elif isinstance(action, Ins):
+            return self.ins_cost
+        elif isinstance(action, Sub):
+            return self.sub_cost
         else:
-            return 1
+            raise ValueError(f"Unexpected action: {action}!")
 
 
 class NoSubstitutionAligner(EditDistanceAligner):
@@ -40,7 +41,7 @@ class NoSubstitutionAligner(EditDistanceAligner):
     def __init__(self):
         super().__init__(del_cost=1., ins_cost=1., sub_cost=1.)
 
-    def action_cost(self, action: Action):
+    def action_cost(self, action: Edit):
         if isinstance(action, Sub):
             return np.inf
         else:
@@ -56,22 +57,22 @@ class OptimalSubstitutionExpert(OptimalExpert):
     def find_valid_actions(self, x: Sequence[Any], i: int, y: Sequence[Any],
                            prefixes: Iterable[Prefix]):
         if len(y) >= self.maximum_output_length:
-            return {END}
+            return {EndOfSequence()}
         input_not_empty = i < len(x)
         attention = x[i] if input_not_empty else None
         actions_prefixes: List[ActionsPrefix] = []
         for prefix in prefixes:
             prefix_insert = prefix.leftmost_of_suffix
-            if prefix_insert == END:
-                valid_actions = {END}
+            if prefix_insert is None:
+                valid_actions = {EndOfSequence()}
             else:
                 valid_actions = {Ins(prefix_insert)}
             if input_not_empty:
-                if prefix_insert == attention:
-                    valid_actions.add(Copy(attention, prefix_insert))
-                elif prefix_insert != END:
-                    # substitutions
-                    valid_actions.add(Sub(old=attention, new=prefix_insert))
+                if prefix_insert is not None:
+                    if prefix_insert == attention:
+                        valid_actions.add(Copy(attention, prefix_insert))
+                    else:
+                        valid_actions.add(Sub(old=attention, new=prefix_insert))
                 valid_actions.add(Del(attention))
             actions_prefix = ActionsPrefix(valid_actions, prefix)
             actions_prefixes.append(actions_prefix)
@@ -92,7 +93,7 @@ class OptimalSubstitutionExpert(OptimalExpert):
                 elif isinstance(action, Sub):
                     x_offset = i + 1
                     t_offset = suffix_begin + 1
-                elif action == END:
+                elif isinstance(action, EndOfSequence):
                     x_offset = i
                     t_offset = suffix_begin
                 else:

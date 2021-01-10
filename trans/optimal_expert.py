@@ -9,8 +9,8 @@ import dataclasses
 
 import numpy as np
 
-from trans.defaults import COPY, DELETE
-from trans.defaults import END_WORD as END
+from trans.actions import ConditionalCopy, ConditionalDel, ConditionalIns, \
+    Edit, EndOfSequence
 
 
 class Expert(abc.ABC):
@@ -74,12 +74,12 @@ class Prefix(object):
         try:
             return self.t[self.j]
         except IndexError:
-            return END
+            return None
 
 
 @dataclasses.dataclass
 class ActionsPrefix(object):
-    actions: Set[Any]
+    actions: Set[Edit]
     prefix: Prefix
 
 
@@ -92,16 +92,19 @@ class OptimalExpert(Expert):
     def find_valid_actions(self, x: Sequence[Any], i: int, y: Sequence[Any],
                            prefixes: Iterable[Prefix]):
         if len(y) >= self.maximum_output_length:
-            return {END}
+            return {EndOfSequence()}
         input_not_empty = i < len(x)
         actions_prefixes: List[ActionsPrefix] = []
         for prefix in prefixes:
             prefix_insert = prefix.leftmost_of_suffix
-            valid_actions = {prefix_insert}
+            if prefix_insert is None:
+                valid_actions = {EndOfSequence()}
+            else:
+                valid_actions = {ConditionalIns(prefix_insert)}
             if input_not_empty:
-                if x[i] == prefix_insert:
-                    valid_actions.add(COPY)
-                valid_actions.add(DELETE)
+                if prefix_insert is not None and x[i] == prefix_insert:
+                    valid_actions.add(ConditionalCopy())
+                valid_actions.add(ConditionalDel())
             actions_prefix = ActionsPrefix(valid_actions, prefix)
             actions_prefixes.append(actions_prefix)
         return actions_prefixes
@@ -121,15 +124,15 @@ class OptimalExpert(Expert):
         for actions_prefix in actions_prefixes:
             suffix_begin = actions_prefix.prefix.j
             for action in actions_prefix.actions:
-                if action == DELETE:
+                if isinstance(action, ConditionalDel):
                     x_offset = i + 1
                     t_offset = suffix_begin
                     action_cost = 1
-                elif action == COPY:
+                elif isinstance(action, ConditionalCopy):
                     x_offset = i + 1
                     t_offset = suffix_begin + 1
                     action_cost = 0
-                elif action == END:
+                elif isinstance(action, EndOfSequence):
                     x_offset = i
                     t_offset = suffix_begin
                     action_cost = 0

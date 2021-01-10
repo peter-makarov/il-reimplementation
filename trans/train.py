@@ -12,11 +12,11 @@ import sys
 import dynet as dy
 import numpy as np
 
-from trans import il_vocabulary
-from trans import il_transducer
+from trans import vocabulary
+from trans import transducer
 from trans import optimal_expert_substitutions
 from trans import sed
-from trans import il_utils
+from trans import utils
 
 random.seed(1)
 
@@ -35,7 +35,7 @@ class DecodingOutput:
     predictions: List[str]
 
 
-def decode(transducer: il_transducer.Transducer, data: List[Sample],
+def decode(transducer: transducer.Transducer, data: List[Sample],
            beam_width: int = 1) -> DecodingOutput:
     if beam_width == 1:
         decoding = lambda s: \
@@ -84,10 +84,10 @@ def main(args: argparse.Namespace):
     else:
         logging.info("Will perform training on unnormalized data.")
 
-    vocabulary = il_vocabulary.Vocabularies()
+    vocabulary = vocabulary.Vocabularies()
 
     training_data = []
-    with il_utils.OpenNormalize(args.train, args.nfd) as f:
+    with utils.OpenNormalize(args.train, args.nfd) as f:
         for line in f:
             input_, target = line.rstrip().split("\t", 1)
             encoded_input = vocabulary.encode_input(input_)
@@ -104,7 +104,7 @@ def main(args: argparse.Namespace):
     logging.info("Wrote vocabulary to %s.", vocabulary_path)
 
     development_data = []
-    with il_utils.OpenNormalize(args.dev, args.nfd) as f:
+    with utils.OpenNormalize(args.dev, args.nfd) as f:
         for line in f:
             input_, target = line.rstrip().split("\t", 1)
             encoded_input = vocabulary.encode_unseen_input(input_)
@@ -113,7 +113,7 @@ def main(args: argparse.Namespace):
 
     if args.test is not None:
         test_data = []
-        with il_utils.OpenNormalize(args.test, args.nfd) as f:
+        with utils.OpenNormalize(args.test, args.nfd) as f:
             for line in f:
                 input_, *optional_target = line.rstrip().split("\t", 1)
                 target = optional_target[0] if optional_target else None
@@ -127,7 +127,7 @@ def main(args: argparse.Namespace):
     expert = optimal_expert_substitutions.OptimalSubstitutionExpert(sed_aligner)
 
     model = dy.Model()
-    transducer = il_transducer.Transducer(model, vocabulary, expert, **dargs)
+    transducer = transducer.Transducer(model, vocabulary, expert, **dargs)
 
     widgets = [progressbar.Bar(">"), " ", progressbar.ETA()]
     train_progress_bar = progressbar.ProgressBar(
@@ -158,7 +158,7 @@ def main(args: argparse.Namespace):
     for epoch in range(args.epochs):
 
         logging.info("Training...")
-        with il_utils.Timer():
+        with utils.Timer():
             train_loss = 0.
             random.shuffle(training_data)
             batches = [training_data[i:i + batch_size]
@@ -189,7 +189,7 @@ def main(args: argparse.Namespace):
         logging.info("Average train loss: %.4f.", avg_loss)
 
         logging.info("Evaluating on training data subset...")
-        with il_utils.Timer():
+        with utils.Timer():
             train_accuracy = decode(transducer, train_subset).accuracy
 
         if train_accuracy > best_train_accuracy:
@@ -198,7 +198,7 @@ def main(args: argparse.Namespace):
         patience += 1
 
         logging.info("Evaluating on development data...")
-        with il_utils.Timer():
+        with utils.Timer():
             decoding_output = decode(transducer, development_data)
             dev_accuracy = decoding_output.accuracy
             avg_dev_loss = decoding_output.loss
@@ -236,7 +236,7 @@ def main(args: argparse.Namespace):
         sys.exit(0)
 
     model = dy.Model()
-    transducer = il_transducer.Transducer(model, vocabulary, expert, **dargs)
+    transducer = transducer.Transducer(model, vocabulary, expert, **dargs)
     model.populate(best_model_path)
 
     evaluations = [(development_data, "dev")]
@@ -246,17 +246,17 @@ def main(args: argparse.Namespace):
 
         logging.info("Evaluating best model on %s data using beam search "
                      "(beam width %d)...", dataset_name, args.beam_width)
-        with il_utils.Timer():
+        with utils.Timer():
             greedy_decoding = decode(transducer, data)
-        il_utils.write_results(greedy_decoding.accuracy,
-                               greedy_decoding.predictions, args.output,
-                               args.nfd, dataset_name, dargs=dargs)
-        with il_utils.Timer():
+        utils.write_results(greedy_decoding.accuracy,
+                            greedy_decoding.predictions, args.output,
+                            args.nfd, dataset_name, dargs=dargs)
+        with utils.Timer():
             beam_decoding = decode(transducer, data, args.beam_width)
-        il_utils.write_results(beam_decoding.accuracy,
-                               beam_decoding.predictions, args.output,
-                               args.nfd, dataset_name, args.beam_width,
-                               dargs=dargs)
+        utils.write_results(beam_decoding.accuracy,
+                            beam_decoding.predictions, args.output,
+                            args.nfd, dataset_name, args.beam_width,
+                            dargs=dargs)
 
 
 if __name__ == "__main__":

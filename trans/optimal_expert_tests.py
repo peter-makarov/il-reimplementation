@@ -5,6 +5,8 @@ import editdistance
 import numpy as np
 
 from trans import optimal_expert
+from trans.actions import ConditionalCopy, ConditionalDel, ConditionalIns, \
+    EndOfSequence
 
 
 class TestOptimalExpert(unittest.TestCase):
@@ -95,7 +97,7 @@ class TestOptimalExpert(unittest.TestCase):
     def test_edge_case_prefix(self):
         prefix1 = optimal_expert.Prefix("w", "w", 1)
         self.assertEqual("", prefix1.suffix)
-        self.assertEqual(optimal_expert.END, prefix1.leftmost_of_suffix)
+        self.assertEqual(None, prefix1.leftmost_of_suffix)
 
     def test_find_valid_actions(self):
         x = "wal"
@@ -105,11 +107,11 @@ class TestOptimalExpert(unittest.TestCase):
         valid_actions = self.optimal_expert.find_valid_actions(x, 2, y, prefixes)
         expected_valid_actions = [
             optimal_expert.ActionsPrefix(
-                {optimal_expert.COPY, optimal_expert.DELETE, "l"},
+                {ConditionalCopy(), ConditionalDel(), ConditionalIns("l")},
                 optimal_expert.Prefix(y, t, 2)
             ),
             optimal_expert.ActionsPrefix(
-                {optimal_expert.DELETE, "k"},
+                {ConditionalDel(), ConditionalIns("k")},
                 optimal_expert.Prefix(y, t, 3)
             )
         ]
@@ -124,7 +126,8 @@ class TestOptimalExpert(unittest.TestCase):
         valid_actions = self.optimal_expert.find_valid_actions(x, i, y, prefixes)
         action_scores = self.optimal_expert.roll_out(x, t, i, valid_actions)
         expected_action_scores = {
-            optimal_expert.COPY: 2, optimal_expert.DELETE: 3, "l": 4, "k": 5}
+            ConditionalCopy(): 2, ConditionalDel(): 3, ConditionalIns("l"): 4,
+            ConditionalIns("k"): 5}
         self.assertEqual(expected_action_scores, action_scores)
 
     def test_score_end(self):
@@ -133,7 +136,7 @@ class TestOptimalExpert(unittest.TestCase):
         y = "walked"
         t = "walked"
         action_scores = self.optimal_expert.score(x, t, i, y)
-        expected_action_scores = {optimal_expert.END: 0}
+        expected_action_scores = {EndOfSequence(): 0}
         self.assertEqual(expected_action_scores, action_scores)
 
     def test_score_empty_strings(self):
@@ -142,7 +145,7 @@ class TestOptimalExpert(unittest.TestCase):
         t = ""
         y = "a"
         action_scores = self.optimal_expert.score(x, t, i, y)
-        expected_action_scores = {optimal_expert.END: 0}
+        expected_action_scores = {EndOfSequence(): 0}
         self.assertEqual(expected_action_scores, action_scores)
 
     def test_score(self):
@@ -151,7 +154,7 @@ class TestOptimalExpert(unittest.TestCase):
         t = "abbbbbbb"
         y = "bbbbbbb"
         action_scores = self.optimal_expert.score(x, t, i, y)
-        expected_action_scores = {optimal_expert.END: 0, "b": 1}
+        expected_action_scores = {EndOfSequence(): 0, ConditionalIns("b"): 1}
         self.assertEqual(expected_action_scores, action_scores)
 
     def test_correct_end(self):
@@ -160,7 +163,7 @@ class TestOptimalExpert(unittest.TestCase):
         y = "walk"
         t = "walked"
         action_scores = self.optimal_expert.score(x, t, i, y)
-        expected_action_scores = {'e': 2}
+        expected_action_scores = {ConditionalIns("e"): 2}
         self.assertEqual(expected_action_scores, action_scores)
 
 

@@ -9,7 +9,7 @@ import numpy as np
 from trans.optimal_expert import Expert
 from trans.actions import ConditionalCopy, ConditionalDel, ConditionalSub, \
     ConditionalIns, GenerativeEdit, Edit, EndOfSequence
-from trans.il_vocabulary import BEGIN_WORD, COPY, DELETE, END_WORD, Vocabularies
+from trans.vocabulary import BEGIN_WORD, COPY, DELETE, END_WORD, Vocabularies
 
 
 MAX_ACTION_SEQ_LEN = 150

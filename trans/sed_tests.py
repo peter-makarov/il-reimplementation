@@ -1,8 +1,10 @@
+"""Unit tests for sed.py."""
 import unittest
 
 import numpy as np
 
-from trans.sed import StochasticEditDistance, Sub, Ins, Del
+from trans.sed import StochasticEditDistance, Sub, Ins
+from trans.optimal_expert_substitutions_tests import to_sample
 
 
 class TestTransducer(unittest.TestCase):
@@ -90,7 +92,8 @@ class TestTransducer(unittest.TestCase):
             "abolir\ta b ɔ l i ʁ", "abonnement\ta b ɔ n m ɑ"
         ]
 
-        sed = StochasticEditDistance.fit_from_data(input_lines, em_iterations=1)
+        data = map(to_sample, input_lines)
+        sed = StochasticEditDistance.fit_from_data(data, em_iterations=1)
         parameter_dictionaries = sed.parameter_dictionaries
         print(parameter_dictionaries)  # @TODO
 
@@ -101,11 +104,12 @@ class TestTransducer(unittest.TestCase):
             "abolir\ta b ɔ l i ʁ", "abonnement\ta b ɔ n m ɑ"
         ]
 
+        data = map(to_sample, input_lines)
         sed = StochasticEditDistance.fit_from_data(
-            input_lines, em_iterations=1, discount=(0.01 - 1))
+            data, em_iterations=1, discount=(0.01 - 1))
         parameter_dictionaries = sed.parameter_dictionaries
         print(parameter_dictionaries)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    TestTransducer().run()
