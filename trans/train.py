@@ -1,8 +1,7 @@
-from typing import List, Tuple
+from typing import List, Optional
 
 import argparse
 import dataclasses
-import json
 import logging
 import math
 import progressbar
@@ -10,6 +9,7 @@ import os
 import random
 import sys
 
+import dynet as dy
 import numpy as np
 
 from trans import il_vocabulary
@@ -18,23 +18,14 @@ from trans import optimal_expert_substitutions
 from trans import sed
 from trans import il_utils
 
-import dynet_config
-dynet_config.set(random_seed=1)
-import dynet as dy
-
 random.seed(1)
 
 
 @dataclasses.dataclass
 class Sample:
     input: str
-    target: str
+    target: Optional[str]
     encoded_input: List[int]
-
-
-def inverse_sigmoid_schedule(k: int):
-    """Probability of sampling an action from the model as function of epoch."""
-    return lambda epoch: (1 - k / (k + np.exp(epoch / k)))
 
 
 @dataclasses.dataclass
@@ -67,90 +58,36 @@ def decode(transducer: il_transducer.Transducer, data: List[Sample],
             correct += 1
         loss += output.log_p / (len(output.action_history) - 1)
         if j > 0 and j % 500 == 0:
-            logging.info(f"\t\t...{j} samples")
-    logging.info(f"\t\t...{j} samples")
+            logging.info("\t\t...%d samples", j)
+    logging.info("\t\t...%d samples", j + 1)
 
     return DecodingOutput(accuracy=correct / len(data),
                           loss=- loss / len(data),
                           predictions=predictions)
 
 
-def decode(transducer: il_transducer.Transducer,
-           data: List[Sample]) -> Tuple[float, float, List[str]]:
-    predictions = []
-    losses = []
-    correct = 0
-    for j, sample in enumerate(data):
-        if j % 20 == 0:
-            dy.renew_cg()
-        output = transducer.transduce(
-            input_=sample.input,
-            encoded_input=sample.encoded_input,
-            target=None,
-            rollin=None,
-            external_cg=True,
-        )
-        prediction = output.output
-        predictions.append(f"{sample.input}\t{prediction}")
-        if prediction == sample.target:
-            correct += 1
-        losses.extend([loss.npvalue() for loss in output.losses])
-        if j > 0 and j % 500 == 0:
-            logging.info(f"\t\t...{j} samples")
-    accuracy = correct / len(data)
-    loss = -float(np.mean(losses))
-    return accuracy, loss, predictions
+def inverse_sigmoid_schedule(k: int):
+    """Probability of sampling an action from the model as function of epoch."""
+    return lambda epoch: (1 - k / (k + np.exp(epoch / k)))
 
 
-def beam_search_decode(transducer: il_transducer.Transducer, beam_width: int,
-           data: List[Sample]) -> Tuple[float, List[str]]:
-    predictions = []
-    correct = 0
-    for j, sample in enumerate(data):
-        if j % 20 == 0:
-            dy.renew_cg()
-        outputs = transducer.beam_search_decode(
-            input_=sample.input,
-            encoded_input=sample.encoded_input,
-            beam_width=beam_width,
-            external_cg=True,
-        )
-        prediction = outputs[0].output
-        predictions.append(f"{sample.input}\t{prediction}")
-        if sample.target is not None and prediction == sample.target:
-            correct += 1
-        if j > 0 and j % 500 == 0:
-            logging.info("\t\t...%d samples", j)
-    accuracy = correct / len(data)
-    return accuracy, predictions
-
-
-def write_results(accuracy, predictions, output: str, dataset_name: str):
-    logging.info("%s set accuracy: %.4f", dataset_name, accuracy)
-
-    dev_eval = os.path.join(
-        output, f"{dataset_name}_beam{args.beam_width}.eval")
-    with open(dev_eval, mode="w") as w:
-        w.write(f"{dataset_name} accuracy: {accuracy:.4f}")
-
-    dev_prediction_tsv = os.path.join(
-        output, f"{dataset_name}_beam{args.beam_width}.predictions")
-    with open(dev_prediction_tsv, encoding="utf8", mode="w") as w:
-        w.write("\n".join(predictions))
-
-
-def main(args):
+def main(args: argparse.Namespace):
 
     dargs = args.__dict__
     for key, value in dargs.items():
-        logging.info(f"%s: %s", str(key).ljust(15), value)
+        logging.info("%s: %s", str(key).ljust(15), value)
 
     os.mkdir(args.output)
+
+    if args.nfd:
+        logging.info("Will perform training on NFD-normalized data.")
+    else:
+        logging.info("Will perform training on unnormalized data.")
 
     vocabulary = il_vocabulary.Vocabularies()
 
     training_data = []
-    with open(args.train, encoding="utf8") as f:
+    with il_utils.OpenNormalize(args.train, args.nfd) as f:
         for line in f:
             input_, target = line.rstrip().split("\t", 1)
             encoded_input = vocabulary.encode_input(input_)
@@ -162,9 +99,12 @@ def main(args):
                  vocabulary.actions)
     logging.info("%d chars: %s", len(vocabulary.characters),
                  vocabulary.characters)
+    vocabulary_path = os.path.join(args.output, "vocabulary.pkl")
+    vocabulary.persist(vocabulary_path)
+    logging.info("Wrote vocabulary to %s.", vocabulary_path)
 
     development_data = []
-    with open(args.dev, encoding="utf8") as f:
+    with il_utils.OpenNormalize(args.dev, args.nfd) as f:
         for line in f:
             input_, target = line.rstrip().split("\t", 1)
             encoded_input = vocabulary.encode_unseen_input(input_)
@@ -173,15 +113,17 @@ def main(args):
 
     if args.test is not None:
         test_data = []
-        with open(args.test, encoding="utf8") as f:
+        with il_utils.OpenNormalize(args.test, args.nfd) as f:
             for line in f:
-                input_, target = line.rstrip().split("\t", 1)
+                input_, *optional_target = line.rstrip().split("\t", 1)
+                target = optional_target[0] if optional_target else None
                 encoded_input = vocabulary.encode_unseen_input(input_)
                 sample = Sample(input_, target, encoded_input)
                 test_data.append(sample)
 
-    sed_aligner = sed.StochasticEditDistance.fit_from_data(training_data,
-        em_iterations=args.sed_em_iterations, discount=args.sed_discount)
+    sed_aligner = sed.StochasticEditDistance.fit_from_data(
+        training_data, em_iterations=args.sed_em_iterations,
+        discount=args.sed_discount)
     expert = optimal_expert_substitutions.OptimalSubstitutionExpert(sed_aligner)
 
     model = dy.Model()
@@ -241,14 +183,14 @@ def main(args):
                 trainer.update()
                 if j > 0 and j % 100 == 0:
                     logging.info("\t\t...%d batches", j)
-            logging.info("\t\t...%d batches", j)
+            logging.info("\t\t...%d batches", j + 1)
 
         avg_loss = train_loss / len(batches)
         logging.info("Average train loss: %.4f.", avg_loss)
 
         logging.info("Evaluating on training data subset...")
         with il_utils.Timer():
-            train_accuracy, _avg_train_loss, _ = decode(transducer, train_subset)
+            train_accuracy = decode(transducer, train_subset).accuracy
 
         if train_accuracy > best_train_accuracy:
             best_train_accuracy = train_accuracy
@@ -257,7 +199,9 @@ def main(args):
 
         logging.info("Evaluating on development data...")
         with il_utils.Timer():
-            dev_accuracy, avg_dev_loss, _ = decode(transducer, development_data)
+            decoding_output = decode(transducer, development_data)
+            dev_accuracy = decoding_output.accuracy
+            avg_dev_loss = decoding_output.loss
 
         if dev_accuracy > best_dev_accuracy:
             best_dev_accuracy = dev_accuracy
@@ -268,7 +212,7 @@ def main(args):
             logging.info("Saved new best model to %s.", best_model_path)
 
         logging.info(
-            f"epoch {epoch} / {args.epochs - 1}: train loss: {avg_loss:.4f} "
+            f"Epoch {epoch} / {args.epochs - 1}: train loss: {avg_loss:.4f} "
             f"dev loss: {avg_dev_loss:.4f} train acc: {train_accuracy:.4f} "
             f"dev acc: {dev_accuracy:.4f} best train acc: {best_train_accuracy:.4f} "
             f"best dev acc: {best_dev_accuracy:.4f} best epoch: {best_epoch} "
@@ -288,37 +232,31 @@ def main(args):
 
     logging.info("Finished training.")
 
-    if os.path.exists(best_model_path):
-        model = dy.Model()
-        transducer = il_transducer.Transducer(model, vocabulary, expert,
-                                              **dargs)
-        model.populate(best_model_path)
-        logging.info("Evaluating best model on development data "
-                     "using beam search (beam width %d)...", args.beam_width)
-        with il_utils.Timer():
-            accuracy, _, predictions = decode(transducer, development_data)
-        logging.info("Greedy decoding accuracy: %.4f", accuracy)
-        with open(os.path.join(args.output, "dev_greedy.predictions"), "w") as w:
-            w.write("\n".join(predictions))
-        with il_utils.Timer():
-            accuracy, predictions = beam_search_decode(
-                transducer, args.beam_width, development_data)
-        write_results(accuracy, predictions, args.output, "dev")
+    if not os.path.exists(best_model_path):
+        sys.exit(0)
 
-        if args.test is None:
-            sys.exit(0)
+    model = dy.Model()
+    transducer = il_transducer.Transducer(model, vocabulary, expert, **dargs)
+    model.populate(best_model_path)
 
-        logging.info("Evaluating best model on test data "
-                     "using beam search (beam width %d)...", args.beam_width)
+    evaluations = [(development_data, "dev")]
+    if args.test is not None:
+        evaluations.append((test_data, "test"))
+    for data, dataset_name in evaluations:
+
+        logging.info("Evaluating best model on %s data using beam search "
+                     "(beam width %d)...", dataset_name, args.beam_width)
         with il_utils.Timer():
-            accuracy, _, predictions = decode(transducer, development_data)
-        logging.info("Greedy decoding accuracy: %.4f", accuracy)
-        with open(os.path.join(args.output, "test_greedy.predictions"), "w") as w:
-            w.write("\n".join(predictions))
+            greedy_decoding = decode(transducer, data)
+        il_utils.write_results(greedy_decoding.accuracy,
+                               greedy_decoding.predictions, args.output,
+                               args.nfd, dataset_name, dargs=dargs)
         with il_utils.Timer():
-            accuracy, predictions = beam_search_decode(
-                transducer, args.beam_width, test_data)
-        write_results(accuracy, predictions, args.output, "test")
+            beam_decoding = decode(transducer, data, args.beam_width)
+        il_utils.write_results(beam_decoding.accuracy,
+                               beam_decoding.predictions, args.output,
+                               args.nfd, dataset_name, args.beam_width,
+                               dargs=dargs)
 
 
 if __name__ == "__main__":
@@ -328,6 +266,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train a g2p neural transducer.")
 
+    parser.add_argument("--dynet-seed", type=int, required=True,
+                        help="DyNET random seed.")
     parser.add_argument("--dynet-mem", type=int, default=1000,
                         help="Allocate MEM MB to DyNET.")
     parser.add_argument("--dynet-autobatch", type=int,
@@ -340,6 +280,8 @@ if __name__ == "__main__":
                         help="Path to development set data.")
     parser.add_argument("--output", type=str, required=True,
                         help="Output directory.")
+    parser.add_argument("--nfd", action="store_true",
+                        help="Train on NFD-normalized data. Write out in NFC.")
     parser.add_argument("--char-dim", type=int, default=100,
                         help="Character peak_embedding dimension.")
     parser.add_argument("--action-dim", type=int, default=100,
