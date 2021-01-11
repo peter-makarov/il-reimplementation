@@ -1,10 +1,11 @@
 """Unit tests for sed.py."""
+import logging
 import unittest
 
 import numpy as np
 
 from trans.sed import StochasticEditDistance, Sub, Ins
-from trans.optimal_expert_substitutions_tests import to_sample
+from trans.test_optimal_expert_substitutions import to_sample
 
 
 class TestTransducer(unittest.TestCase):
@@ -14,14 +15,13 @@ class TestTransducer(unittest.TestCase):
         self.source_alphabet1 = list("abcdefg")
         self.target_alphabet1 = list("fghijk")
 
-        self.smart_sed = StochasticEditDistance(
-            self.source_alphabet1, self.target_alphabet1, smart_init=True)
-
+        self.smart_sed = StochasticEditDistance.build_sed(
+            self.source_alphabet1, self.target_alphabet1)
 
     def test_sed_random_initialization(self):
 
-        sed = StochasticEditDistance(
-            self.source_alphabet1, self.target_alphabet1, smart_init=False)
+        sed = StochasticEditDistance.build_sed(
+            self.source_alphabet1, self.target_alphabet1, copy_probability=None)
         eos_weight = sed.delta_eos
 
         for weight_dict in ("delta_del", "delta_ins", "delta_sub"):
@@ -30,8 +30,8 @@ class TestTransducer(unittest.TestCase):
 
     def test_sed_copy_biased_initialization(self):
 
-        sed = StochasticEditDistance(
-            self.source_alphabet1, self.target_alphabet1, smart_init=True)
+        sed = StochasticEditDistance.build_sed(
+            self.source_alphabet1, self.target_alphabet1)
         eos_weight = sed.delta_eos
 
         for weight_dict in ("delta_del", "delta_ins"):
@@ -77,13 +77,16 @@ class TestTransducer(unittest.TestCase):
         source_alphabet = {c for source in sources for c in source}
         target_alphabet = {c for target in targets for c in target}
 
-        sed = StochasticEditDistance(
-            source_alphabet, target_alphabet, smart_init=True)
+        sed = StochasticEditDistance.build_sed(
+            source_alphabet, target_alphabet)
 
         o = sed.stochastic_distance(sources[1], targets[1])
-        print(o)
+        logging.info(o)
 
-        sed.update_model(sources, targets, em_iterations=1)
+        before_ll = sed.log_likelihood(sources, targets)
+        sed.update_model(sources, targets, iterations=1)
+        after_ll = sed.log_likelihood(sources, targets)
+        self.assertTrue(before_ll <= after_ll)
 
     def test_fit_from_data(self):
 
@@ -94,22 +97,9 @@ class TestTransducer(unittest.TestCase):
 
         data = map(to_sample, input_lines)
         sed = StochasticEditDistance.fit_from_data(data, em_iterations=1)
-        parameter_dictionaries = sed.parameter_dictionaries
-        print(parameter_dictionaries)  # @TODO
-
-    def test_sparse_prior(self):
-
-        input_lines = [
-            "abby\ta b i", "abidjan\ta b i d ʒ ɑ", "abject\ta b ʒ ɛ k t",
-            "abolir\ta b ɔ l i ʁ", "abonnement\ta b ɔ n m ɑ"
-        ]
-
-        data = map(to_sample, input_lines)
-        sed = StochasticEditDistance.fit_from_data(
-            data, em_iterations=1, discount=(0.01 - 1))
-        parameter_dictionaries = sed.parameter_dictionaries
-        print(parameter_dictionaries)
+        logging.info(sed.params)  # @TODO
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level="DEBUG", format="%(levelname)s: %(message)s")
     TestTransducer().run()

@@ -2,6 +2,7 @@
 import heapq
 import unittest
 
+import utils
 from trans import optimal_expert_substitutions
 from trans import sed
 from trans import train
@@ -134,7 +135,7 @@ def min_dict(d):
 
 def to_sample(line: str):
     input_, target = line.rstrip().split("\t", 1)
-    return train.Sample(input_, target, [])
+    return utils.Sample(input_, target, [])
 
 
 if __name__ == "__main__":

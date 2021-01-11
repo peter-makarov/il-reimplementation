@@ -1,174 +1,145 @@
-"""
-Based on Ristad and Yianilos (1998) Learning String Edit Distance.
-(https://www.researchgate.net/publication/3192848_Learning_String_Edit_Distance)
-"""
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, \
-    Union
+"""Based on Ristad and Yianilos (1998) Learning String Edit Distance."""
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
-import math
-import multiprocessing
-import numbers
+import dataclasses
+import logging
 import os
 import pickle
 
 import numpy as np
 from scipy.special import logsumexp
 
-
-from trans.actions import Aligner, Sub, Del, Ins, EndOfSequence
-
-
-ParamDict = Union[
-    Dict[Union[Tuple[str, str], str], float],
-    float]
+from trans.actions import Aligner, Copy, Del, Edit, EndOfSequence, Ins, Sub
+from trans import utils
 
 
 LARGE_NEG_CONST = -float(10 ** 6)
-TOL = 10 ** -10
+MAX_TARGET = 400
+
+
+@dataclasses.dataclass
+class ParamDict:
+    delta_sub: Dict[Tuple[Any, Any], float]
+    delta_del: Dict[Any, float]
+    delta_ins: Dict[Any, float]
+    delta_eos: float
+
+    def sum(self):
+        values = [self.delta_eos]
+        for vs in (self.delta_sub, self.delta_ins, self.delta_del):
+            values.extend(vs.values())
+        return logsumexp(values)
 
 
 class StochasticEditDistance(Aligner):
+    """
+    Implementation of the Stochastic Edit Distance model from
+    Ristad & Yianilos 1998 "Learning String Edit Distance". The model is a
+    memoryless probabilistic weighted finite-state transducer that by use of
+    character edits (insertions, deletions, substitutions) maps one string to
+    another. Edit weights are learned with Expectation-Maximization.
 
-    def __init__(self, source_alphabet: Iterable[Any],
-                 target_alphabet: Iterable[Any],
-                 param_dicts: Optional[str] = None,
-                 smart_init: Optional[bool] = False,
-                 copy_proba: float = 0.9,
-                 discount: float = 10 ** -5,
-                 *args, **kwargs) -> None:
-        """
-        Implementation of the Stochastic Edit Distance model from Ristad & Yianilos 1998 "Learning String Edit
-        Distance". The model is a memoryless probabilistic weighted finite-state transducer that by use of character
-        edits (insertions, deletions, substitutions) maps one string to another. Edit weights are learned with
-        Expectation-Maximization.
+    Args:
+        param: SED weights."""
 
-        :param source_alphabet: Characters of all input strings.
-        :param target_alphabet: Characters of all target strings.
-        :param param_dicts: Dictionaries of learned parameters.
-        :param smart_init: Initialization of parameters with bias towards copying.
-        :param copy_proba: If smart_init, how much mass to give to copy edits.
-        :param discount: Pseudocount for assigning non-zero probability to unknown edit (to meaningfully handle OOV
-            words).
-        """
-        self.param_dicts = param_dicts
-        self.smart_init = smart_init
-        if param_dicts:
-            # load dicts from file
-            self.from_pickle(self.param_dicts)
-        else:
-            # build WFST topology from training data
-            self.build_sed(source_alphabet, target_alphabet, discount)
+    def __init__(self, params: ParamDict, *args, **kwargs) -> None:
 
-            if self.smart_init:
-                self.initialize_smart(copy_proba)
-            else:
-                self.initialize_random()
+        self.params = params
+        self.delta_sub = params.delta_sub
+        self.delta_del = params.delta_del
+        self.delta_ins = params.delta_ins
+        self.delta_eos = params.delta_eos
+        self.default = LARGE_NEG_CONST  # ad-hoc fix for unseen inputs / outputs
 
-        expected_number_of_edits = (
-                len(self.delta_sub) + len(self.delta_del) + len(
-            self.delta_ins) + 1)
-        assert expected_number_of_edits == self.N, (
-            expected_number_of_edits, self.N)
-        assert np.isclose(0., logsumexp(
-            list(self.delta_sub.values()) + list(self.delta_del.values()) +
-            list(self.delta_ins.values()) + [self.delta_eos]))
-
-    def build_sed(self,
-                  source_alphabet: Iterable[Any],
-                  target_alphabet: Iterable[Any],
-                  discount: float):
-
-        self.source_alphabet: Set[Any] = set(source_alphabet)
-        self.target_alphabet: Set[Any] = set(target_alphabet)
-
-        self.len_source_alphabet = len(self.source_alphabet)
-        self.len_target_alphabet = len(self.target_alphabet)
-
-        # all edits
-        self.N = self.len_source_alphabet * self.len_target_alphabet + \
-                 self.len_source_alphabet + self.len_target_alphabet + 1
-
-        if discount < 0.:
-            # sparse Dirichlet prior
-            self.default = np.log(10**-5 / self.N)
-        else:
-            self.default = \
-                np.log(discount / self.N)  # log probability of unseen edits
-
-        self.discount = discount
-
-    def initialize_smart(self, copy_proba: float):
-        """Initializes weights with a strong bias to copying."""
-
-        if not (0 < copy_proba < 1):
+        if not np.isclose(0., self.params.sum()):
             raise ValueError(
-                f'0 < copy probability={copy_proba} < 1 doesn\'t hold.'
-            )
-        num_copy_edits = len(self.target_alphabet & self.source_alphabet)
-        num_rest = self.N - num_copy_edits
-        # params for computing word confusion probability
-        alpha = np.log(copy_proba / num_copy_edits)  # copy log probability
-        log_p = np.log((1 - copy_proba) / num_rest)  # log probability of
-        # substitution, deletion, and insertion
-        self._initialize(alpha, log_p)
+                f"Parameters do not sum to 1!: {self.params.sum():.4f}.")
 
-    def initialize_random(self):
-        """Initializes weights uniformly."""
+    @classmethod
+    def build_sed(cls, source_alphabet: Iterable[Any],
+                  target_alphabet: Iterable[Any],
+                  copy_probability: Optional[float] = 0.9):
+        """
+        Builds a SED given a source and a target alphabets. If copy_proba is not
+        None, distribute this probability mass across copy actions to bias
+        towards copying.
 
-        uniform_weight = np.log(1 / self.N)
-        self._initialize(uniform_weight, uniform_weight)
-
-    def _initialize(self, log_copy_proba: float, log_rest_proba: float):
-        """Initializes weights.
-
-        For simplicity, ignores discount in initialization.
+        Args:
+            source_alphabet: Characters of all input strings.
+            target_alphabet: Characters of all target strings.
+            copy_probability: On weight init, how much mass to give to copy
+                edits.
         """
 
-        self.delta_sub = {(s, t): log_copy_proba if s == t else log_rest_proba
-                          for s in self.source_alphabet
-                          for t in self.target_alphabet}
-        self.delta_del = {s: log_rest_proba for s in self.source_alphabet}
-        self.delta_ins = {t: log_rest_proba for t in self.target_alphabet}
-        self.delta_eos = log_rest_proba
+        source_alphabet = set(source_alphabet)
+        target_alphabet = set(target_alphabet)
 
-    def from_pickle(self, path2pkl: str) -> None:
-        """
-        Load delta* parameters from pickle.
-        :param path2pkl: Path to pickle.
-        """
-        try:
-            print('Loading sed channel parameters from file: ', path2pkl)
-            with open(path2pkl, 'rb') as w:
-                (self.delta_sub, self.delta_del, self.delta_ins,
-                 self.delta_eos, discount) = pickle.load(w)
+        N = (len(source_alphabet) * len(target_alphabet) +
+             len(source_alphabet) + len(target_alphabet) + 1)
 
-            self.build_sed(
-                source_alphabet=self.delta_del.keys(),
-                target_alphabet=self.delta_ins.keys(),
-                discount=discount
-            )
+        if copy_probability is None:
+            uniform_weight = np.log(1 / N)
+            log_copy_prob = uniform_weight  # probability of a copy action
+            log_rest_prob = uniform_weight  # probability of any other action
+        elif 0 < copy_probability < 1:
+            # split copy mass over individual copy actions
+            num_copy_edits = len(target_alphabet & source_alphabet)
+            num_rest = N - num_copy_edits
+            log_copy_prob = np.log(copy_probability / num_copy_edits)
+            log_rest_prob = np.log((1 - copy_probability) / num_rest)
+        else:
+            raise ValueError(
+                f"0 < copy probability={copy_probability} < 1 doesn\'t hold.")
 
-            # some random sanity checks
-            assert all((s, t) in self.delta_sub for s in self.source_alphabet
-                       for t in self.target_alphabet)
-            assert (len(self.delta_sub) ==
-                    len(self.source_alphabet) * len(self.target_alphabet))
-            assert isinstance(self.delta_eos, numbers.Real)
-        except (OSError, KeyError, AssertionError) as e:
-            print(
-                f'"{path2pkl}" exists and data in right format?',
-                os.path.exists(path2pkl)
-            )
-            raise e
+        delta_sub = {(s, t): log_copy_prob if s == t else log_rest_prob
+                     for s in source_alphabet for t in target_alphabet}
+        delta_del = {s: log_rest_prob for s in source_alphabet}
+        delta_ins = {t: log_rest_prob for t in target_alphabet}
+        delta_eos = log_rest_prob
+        params = ParamDict(delta_sub, delta_del, delta_ins, delta_eos)
+        return cls(params)
 
-    def forward_evaluate(self, source: Sequence,
-                         target: Sequence) -> np.ndarray:
-        """
-        Compute dynamic programming table (in log real) filled with forward log probabilities.
-        :param source: Source string.
-        :param target: Target string.
-        :return: Dynamic programming table.
-        """
+    @classmethod
+    def fit_from_data(cls, lines: Iterable[utils.Sample],
+                      copy_probability: float = None,
+                      em_iterations: int = 30):
+
+        source_alphabet = set()
+        target_alphabet = set()
+        sources = []
+        targets = []
+        for line in lines:
+            source = line.input
+            target = line.target
+            source_alphabet.update(source)
+            target_alphabet.update(target)
+            sources.append(source)
+            targets.append(target)
+
+        sed = cls.build_sed(source_alphabet, target_alphabet, copy_probability)
+        sed.update_model(sources, targets, iterations=em_iterations)
+        return sed
+
+    @classmethod
+    def from_pickle(cls, path2pkl: str):
+        """Load parameters from a pickle file."""
+
+        logging.info("Loading sed channel parameters from file: ", path2pkl)
+        with open(path2pkl, "rb") as w:
+            params: ParamDict = pickle.load(w)
+        return cls(params)
+
+    def to_pickle(self, pkl: str):
+        with open(pkl, "wb") as w:
+            pickle.dump(self.params, w)
+
+    def forward_evaluate(self, source: Sequence[Any],
+                         target: Sequence[Any]) -> np.ndarray:
+        """Computes forward probabilities.
+
+        Computes dynamic programming table (in log real) filled with forward
+        log probabilities."""
+
         T, V = len(source), len(target)
         alpha = np.full((T + 1, V + 1), LARGE_NEG_CONST)
         alpha[0, 0] = 0.
@@ -188,22 +159,21 @@ class StochasticEditDistance(Aligner):
                 if v > 0 and t > 0:
                     summands.append(
                         self.delta_sub.get(
-                            (source[t - 1], target[v - 1]), self.default
-                        ) + alpha[t - 1, v - 1]
+                            (source[t - 1], target[v - 1]), self.default) +
+                        alpha[t - 1, v - 1]
                     )
                 alpha[t, v] = logsumexp(summands)
         alpha[T, V] += self.delta_eos
         return alpha
 
-    def backward_evaluate(self, source: Sequence,
-                          target: Sequence) -> np.ndarray:
-        """
-        Compute dynamic programming table (in log real) filled with backward log probabilities (the probabilities of
-        the suffix, i.e. p(source[t:], target[v:]) e.g. p('', 'a') = p(ins(a))*p(#).
-        :param source: Source string.
-        :param target: Target string.
-        :return: Dynamic programming table.
-        """
+    def backward_evaluate(self, source: Sequence[Any],
+                          target: Sequence[Any]) -> np.ndarray:
+        """Computes backward probabilities.
+
+        Compute dynamic programming table (in log real) filled with backward log
+        probabilities (the probabilities of the suffix, i.e.
+        p(source[t:], target[v:]). E.g. p("", "a") = p(ins(a))*p(#)."""
+
         T, V = len(source), len(target)
         beta = np.full((T + 1, V + 1), LARGE_NEG_CONST)
         beta[T, V] = self.delta_eos
@@ -229,50 +199,13 @@ class StochasticEditDistance(Aligner):
                 beta[t, v] = logsumexp(summands)
         return beta
 
-    def ll(self, sources: Sequence, targets: Sequence,
-           weights: Sequence[float] = None,
-           decode_threads: Optional[int] = None):
-        """
-        Computes weighted log likelihood.
-        :param sources: Source strings.
-        :param targets: Target strings.
-        :param weights: Weights for pairs of source-target strings.
-        :param decode_threads: Speed up the for loop.
-        :return: Weighted log likelihood.
-        """
-        if decode_threads and decode_threads > 1:
+    def log_likelihood(self, sources: Iterable[Sequence[Any]],
+                       targets: Iterable[Sequence[Any]]) -> float:
+        """Computes log likelihood."""
 
-            data_len = len(sources)
-            step_size = math.ceil(data_len / decode_threads)
-            print(
-                f'Will compute weighted likelihood in {decode_threads} chunks '
-                'of size {step_size}'
-            )
-            pool = multiprocessing.Pool()
-            grouped_samples = [(sources[i:i + step_size],
-                                targets[i:i + step_size],
-                                weights[i:i + step_size])
-                               for i in range(0, data_len, step_size)]
-            results = pool.map(self._weighted_forward, grouped_samples)
-            pool.terminate()
-            pool.join()
-            ll = np.mean([w for ww in results for w in ww])
-        else:
-            # single thread computation
-            ll = np.mean([weight * self.forward_evaluate(source, target)[-1, -1]
-                          for source, target, weight in
-                          zip(sources, targets, weights)])
-        return ll
-
-    def _weighted_forward(self, ss_tt_ww: Tuple[List, List, List]):
-        """
-        Helper function for parallelized computation of weighted log likelihood.
-        :param ss_tt_ww: Tuple of sources, targets, weights.
-        :return: Weighted log likelihood of the samples.
-        """
-        ss, tt, ww = ss_tt_ww
-        return [w * self.forward_evaluate(s, t)[-1, -1] for s, t, w in
-                zip(ss, tt, ww)]
+        ll = np.mean([self.forward_evaluate(source, target)[-1, -1]
+                      for source, target in zip(sources, targets)])
+        return float(ll)
 
     class Gammas:
         def __init__(self, sed: 'StochasticEditDistance'):
@@ -281,83 +214,42 @@ class StochasticEditDistance(Aligner):
             :param sed: Channel.
             """
             self.sed = sed
-            self.eos = 0
-            self.sub = {k: 0. for k in self.sed.delta_sub}
-            self.del_ = {k: 0. for k in self.sed.delta_del}
-            self.ins = {k: 0. for k in self.sed.delta_ins}
+            self.eos = LARGE_NEG_CONST
+            self.sub = {k: LARGE_NEG_CONST for k in self.sed.delta_sub}
+            self.del_ = {k: LARGE_NEG_CONST for k in self.sed.delta_del}
+            self.ins = {k: LARGE_NEG_CONST for k in self.sed.delta_ins}
 
         def normalize(self):
             """
             Normalize probabilities and assign them to the channel's deltas.
             :param discount: Unnormalized quantity for edits unseen in training.
             """
-            if self.sed.discount < 0.:
-                # applies sparse Dirichlet prior, see Johnson et al. 2007 NAACL
-                self.sub = {
-                    k: max(0, self.sub[k] + self.sed.discount)
-                    for k in self.sub
-                }
-                self.del_ = {
-#                    k: max(0, self.del_[k])
-                    k: max(0, self.del_[k] + self.sed.discount/2)
-                    for k in self.del_
-                }
-                self.ins = {
-                    k: max(0, self.ins[k] + self.sed.discount/2)
-#                    k: max(0, self.ins[k] )
-                    for k in self.ins
-                }
-                self.eos = max(0, self.eos + self.sed.discount) # avoid eos = 0
- #               self.eos = max(0, self.eos ) # avoid eos = 0
 
-                denom = np.log(
-                    self.eos + sum(self.del_.values()) + sum(self.ins.values()) +
-                    sum(self.sub.values())
-                )
-                if np.isnan(denom):
-                    valx = self.eos + sum(self.del_.values()) + sum(self.ins.values()) + sum(self.sub.values())
-                    print(f"denom: {valx}")
-                self.sub = {
-                    k: (np.log(v) - denom) for k, v in self.sub.items() if v > 0
-                }
-                self.del_ = {
-                    k: (np.log(v) - denom) for k, v in self.del_.items() if v > 0
-                }
-                self.ins = {
-                    k: (np.log(v) - denom) for k, v in self.ins.items() if v > 0
-                }
-                self.eos = np.log(self.eos) - denom
-            else:
-                # all mass to distribute among edits
-                denom = np.log(
-                    self.eos + sum(self.del_.values()) + sum(self.ins.values()) +
-                    sum(self.sub.values()) + self.sed.discount * self.sed.N
-                )
-                self.sub = {
-                    k: np.log(self.sub[k] + self.sed.discount) - denom
-                    for k in self.sub
-                }
-                self.del_ = {
-                    k: np.log(self.del_[k] + self.sed.discount) - denom
-                    for k in self.del_
-                }
-                self.ins = {
-                    k: np.log(self.ins[k] + self.sed.discount) - denom
-                    for k in self.ins
-                }
-                self.eos = np.log(self.eos + self.sed.discount) - denom
+            #  log_discount = np.log(self.sed.discount)
 
-                assert len(self.sub) + len(self.del_) + len(
-                    self.ins) + 1 == self.sed.N
+            denom = logsumexp(
+                [self.eos] +                                                    # np.log(self.sed.discount * self.sed.N)
+                list(self.del_.values()) + list(self.ins.values()) +
+                list(self.sub.values())
+            )
+            self.sub = {
+                k: logsumexp([self.sub[k]]) - denom                             # log_discount
+                for k in self.sub
+            }
+            self.del_ = {
+                k: logsumexp([self.del_[k]]) - denom                            # log_discount
+                for k in self.del_
+            }
+            self.ins = {
+                k: logsumexp([self.ins[k]]) - denom                             # log_discount
+                for k in self.ins
+            }
+            self.eos = logsumexp([self.eos]) - denom                            # log_discount
+
             check_sum = logsumexp(
                 list(self.sub.values()) + list(self.del_.values()) +
                 list(self.ins.values()) + [self.eos]
             )
-            if True:
-                print(f"sub {len(self.sub)}: { {p[0]:round(p[1],3) for p in sorted(self.sub.items(), key=lambda kv: -kv[1]) } }")
-                print(f"del {len(self.del_)}: { {p[0]:round(p[1],3) for p in sorted(self.del_.items(), key=lambda kv: -kv[1]) } }")
-                print(f"ins {len(self.ins)}: { {p[0]:round(p[1],3) for p in sorted(self.ins.items(), key=lambda kv: -kv[1]) } }")
-                print(f"eos 1: {[self.eos]}")
             assert np.isclose(0., check_sum), check_sum
             # set the channel's delta to log normalized gammas
             self.sed.delta_eos = self.eos
@@ -365,51 +257,31 @@ class StochasticEditDistance(Aligner):
             self.sed.delta_ins = self.ins
             self.sed.delta_del = self.del_
 
-    def em(self, sources: Sequence, targets: Sequence,
-           weights: Optional[Sequence[float]] = None,
-           iterations: int = 10, decode_threads: Optional[int] = None,
-           test: bool = True,
-           verbose: bool = False) -> None:
-        """
-        Update the channel parameter's delta* with Expectation-Maximization.
-        :param sources: Source strings.
-        :param targets: Target strings.
-        :param weights: Weights for the pairs of source and target strings.
-        :param iterations: Number of iterations of EM.
-        :param decode_threads: Number of threads to use for the computation of log-likelihood if test is True.
-        :param test: Whether to report log-likelihood.
-        :param verbose: Verbosity.
-        """
-        if weights is None:
-            weights = [1.] * len(sources)
-        if test:
-            print('Initial weighted LL=',
-                  self.ll(sources, targets, weights, decode_threads=0))
-        # print('SED bulkscore cache: ', self.bulkscore.cache_info())  # -> cache and multiprocessing don't work together
-        for i in range(iterations):
-            gammas = self.Gammas(
-                self)  # container for unnormalized probabilities
-            for sample_num, (source, target, weight) in enumerate(
-                    zip(sources, targets, weights)):
-                if weight < TOL:
-                    if verbose:
-                        print('Weight is below TOL. Skipping: ', source, target,
-                              weight)
-                    continue
-                if len(target) > 400:
-                    continue
-                self.expectation_step(source, target, gammas, weight)
-                if test and sample_num > 0 and sample_num % 1000 == 0:
-                    print(f'\t...processed {sample_num} samples')
-            gammas.normalize()  # maximization step: normalize and assign to self.delta*
-            # self.bulkscore.cache_clear()
-            # print('SED bulkscore cache cleared: ', self.bulkscore.cache_info())
-            if test:
-                print('IT_{}='.format(i),
-                      self.ll(sources, targets, weights, decode_threads=0))
+    def em(self, sources: Sequence[Any], targets: Sequence[Any],
+           iterations: int = 10) -> None:
+        """Update parameters using Expectation-Maximization.
 
-    def expectation_step(self, source: Sequence, target: Sequence,
-                         gammas: Gammas, weight: float = 1.) -> None:
+        Args:
+            sources: Source strings.
+            targets: Target strings.
+            iterations: Number of iterations of EM.
+        """
+
+        logging.info("Initial weighted LL=%.4f", self.log_likelihood(sources, targets))
+
+        for i in range(iterations):
+            gammas = self.Gammas(self)
+            for sample_num, (source, target) in enumerate(zip(sources, targets)):
+                if len(target) > MAX_TARGET:
+                    continue
+                self.expectation_step(source, target, gammas)
+                if sample_num > 0 and sample_num % 1000 == 0:
+                    logging.info("\t...processed %d samples", sample_num)
+            gammas.normalize()  # maximization step and assignment
+            logging.info("IT_%d=%.4f", i, self.log_likelihood(sources, targets))
+
+    def expectation_step(self, source: Sequence[Any], target: Sequence[Any],
+                         gammas: Gammas) -> None:
         """
         Accumumate soft counts.
         :param source: Source string.
@@ -417,42 +289,46 @@ class StochasticEditDistance(Aligner):
         :param gammas: Unnormalized probabilities that we are learning.
         :param weight: Weight for the pair (`source`, `target`).
         """
-        alpha = np.exp(self.forward_evaluate(source, target))
-        beta = np.exp(self.backward_evaluate(source, target))
-        gammas.eos += weight
+        alpha = self.forward_evaluate(source, target)
+        beta = self.backward_evaluate(source, target)
+        gammas.eos = logsumexp([gammas.eos, 0.])
         T, V = len(source), len(target)
         for t in range(T + 1):
             for v in range(V + 1):
                 # (alpha = probability of prefix) * probability of edit * (beta = probability of suffix)
-                rest = beta[t, v] / alpha[T, V]
-                if np.isnan(rest):
-                    print(f"rest is NAN {beta[t, v]}/ {alpha[T, V]} T{T} V{V}")
-                    print(f"for pair target{target} source{source}")
-                    return
-                if t > 0 and source[t - 1] in gammas.del_:
-                    gammas.del_[source[t - 1]] += \
-                        weight * alpha[t - 1, v] * np.exp(
-                            self.delta_del[source[t - 1]]) * rest
-                if v > 0 and target[v - 1] in gammas.ins:
-                    gammas.ins[target[v - 1]] += \
-                        weight * alpha[t, v - 1] * np.exp(
-                            self.delta_ins[target[v - 1]]) * rest
-                if (t > 0 and v > 0 and
-                        (source[t - 1], target[v - 1]) in gammas.sub):
-                    gammas.sub[(source[t - 1], target[v - 1])] += \
-                        weight * alpha[t - 1, v - 1] * np.exp(
-                            self.delta_sub[(source[t - 1], target[v - 1])]
-                        ) * rest
+                rest = beta[t, v] - alpha[T, V]
+                schar = source[t - 1]
+                tchar = target[v - 1]
+                stpair = schar, tchar
+                if t > 0 and schar in gammas.del_:
+                    gammas.del_[schar] = logsumexp(
+                        [gammas.del_[schar],
+                         alpha[t - 1, v] + self.delta_del[schar] + rest])
+                if v > 0 and tchar in gammas.ins:
+                    gammas.ins[tchar] = logsumexp(
+                        [gammas.ins[tchar],
+                         alpha[t, v - 1] + self.delta_ins[tchar] + rest])
+                if t > 0 and v > 0 and stpair in gammas.sub:
+                    gammas.sub[stpair] = logsumexp(
+                        [gammas.sub[stpair],
+                         alpha[t - 1, v - 1] + self.delta_sub[stpair] + rest])
 
     def viterbi_distance(self, source: Sequence, target: Sequence,
                          with_alignment: bool = False) -> \
             Union[float, Tuple[List, float]]:
-        """
+        """Computes Viterbi edit distance.
+
         Viterbi edit distance \propto max_{edits} p(target, edit | source).
-        :param source: Source string.
-        :param target: Target string.
-        :param with_alignment: Whether to output the corresponding sequence of edits.
-        :return: Probability score and, optionally, the sequence of edits that gives this score.
+
+        Args:
+            source: Source string.
+            target: Target string.
+            with_alignment: Whether to output the corresponding sequence of
+                edits.
+
+        Returns:
+            Probability score and, optionally, the sequence of edits that gives
+            this score.
         """
         T, V = len(source), len(target)
         alpha = np.full((T + 1, V + 1), LARGE_NEG_CONST)
@@ -470,8 +346,9 @@ class StochasticEditDistance(Aligner):
                         alpha[t - 1, v])
                 if v > 0 and t > 0:
                     alternatives.append(
-                        self.delta_sub.get((source[t - 1], target[v - 1]),
-                                           self.default) + alpha[t - 1, v - 1])
+                        self.delta_sub.get(
+                            (source[t - 1], target[v - 1]), self.default) +
+                        alpha[t - 1, v - 1])
                 alpha[t, v] = max(alternatives)
         alpha[T, V] += self.delta_eos
         optim_score = alpha[T, V]
@@ -513,95 +390,53 @@ class StochasticEditDistance(Aligner):
                         ind_w = pind_w
                     alignment.append(action)
 
-    def stochastic_distance(self, source: Sequence, target: Sequence) -> float:
-        """
-        Stochastic edit distance \propto sum_{edits} p(target, edit | source) = p(target | source)
-        :param source: Source string.
-        :param target: Target string.
-        :return: Probability score.
+    def stochastic_distance(self, source: Sequence[Any],
+                            target: Sequence[Any]) -> float:
+        """Computes stochastic edit distance.
+
+        Stochastic edit distance \propto sum_{edits} p(target, edit | source) =
+        p(target | source).
+
+        Args:
+            source: Source string.
+            target: Target string.
+            with_alignment: Whether to output the corresponding sequence of
+                edits.
+
+        Returns:
+            Probability score.
         """
         return self.forward_evaluate(source, target)[-1, -1]
 
-    def to_pickle(self, pkl: str) -> None:
+    def update_model(self, sources: Sequence[Iterable[Any]],
+                     targets: Sequence[Iterable[Any]],
+                     iterations: int = 10,
+                     output_path: Optional[str] = None,
+                     **kwargs) -> None:
         """
-        Write parameters delta* to file.
-        :param pkl: The pickle filename.
+        Update parameters by maximizing likelihood by Expectation-Maximization.
+
+        Args:
+            sources: Source strings.
+            targets: Target strings.
+            iterations: Number of iterations of EM.
+            output_path: Path where to write learned weights.
         """
-        with open(pkl, 'wb') as w:
-            pickle.dump((self.delta_sub, self.delta_del, self.delta_ins,
-                         self.delta_eos, self.discount), w)
+        logging.info("Updating model parameters by maximizing likelihood using "
+                     "EM (%d iterations).", iterations)
+        self.em(sources, targets, iterations)
 
-    def save_model(self, path2model: str) -> None:
-        return self.to_pickle(path2model)
-
-    def update_model(self, sources: Sequence, targets: Sequence,
-                     weights: Optional[Sequence[float]] = None,
-                     em_iterations: int = 10,
-                     decode_threads: Optional[int] = None,
-                     test: bool = True, verbose: bool = False,
-                     output_path: Optional[str] = "/tmp", **kwargs) -> None:
-        """
-        Update channel model parameters by maximizing weighted likelihood by Expectation-Maximization.
-        :param sources: Source strings.
-        :param targets: Target strings.
-        :param weights: Weights for the pairs of source and target strings.
-        :param em_iterations: Number of iterations of EM.
-        :param decode_threads: Number of threads to use for the computation of log-likelihood if test is True.
-        :param test: Whether to report log-likelihood.
-        :param verbose: Verbosity.
-        :param output_path: Path where to write learned weights.
-        """
-        if test:
-            print(
-                f'Updating channel model parameters by maximizing weighted '
-                f'likelihood using EM ({em_iterations} iterations).'
-            )
-        self.em(sources=sources, targets=targets, weights=weights,
-                iterations=em_iterations, decode_threads=decode_threads,
-                test=test, verbose=verbose)
-
-        path2pkl = os.path.join(output_path, 'param_dict.pkl')
-        self.save_model(path2pkl)
-        print(f'Wrote latest model weights to "{path2pkl}".')
-
-    @classmethod
-    def fit_from_data(cls, lines: Iterable[Any],
-                      smart_init: bool = False, em_iterations: int = 30,
-                      discount: float = 10 ** -5):
-
-        source_alphabet = set()
-        target_alphabet = set()
-        sources = []
-        targets = []
-        for line in lines:
-            source = line.input
-            target = line.target
-            source_alphabet.update(source)
-            target_alphabet.update(target)
-            sources.append(source)
-            targets.append(target)
-
-        sed = cls(source_alphabet, target_alphabet, smart_init=smart_init,
-                  discount=discount)
-        sed.update_model(sources, targets, em_iterations=em_iterations)
-        return sed
-
-    @property
-    def parameter_dictionaries(self) -> Dict[str, ParamDict]:
-
-        return {
-            "substitutions": self.delta_sub,
-            "insertions": self.delta_ins,
-            "deletions": self.delta_del,
-            "eos": self.delta_eos
-        }
+        if output_path is not None:
+            path2pkl = os.path.join(output_path, "param_dict.pkl")
+            self.to_pickle(path2pkl)
+            logging.info("Wrote latest model weights to %s.", path2pkl)
 
     def action_sequence_cost(self, x: Sequence[Any], y: Sequence[Any],
                              x_offset: int, y_offset: int) -> float:
 
         return -self.viterbi_distance(source=x[x_offset:], target=y[y_offset:])
 
-    def action_cost(self, action: Any) -> float:
+    def action_cost(self, action: Edit) -> float:
         if isinstance(action, Del):
             return -self.delta_del.get(action.old, self.default)
         elif isinstance(action, Ins):
@@ -611,7 +446,8 @@ class StochasticEditDistance(Aligner):
                 (action.old, action.new), self.default)
         elif isinstance(action, EndOfSequence):
             return -self.delta_eos
-        else:
+        elif isinstance(action, Copy):
             return -self.delta_sub.get(
                 (action.old, action.old), self.default)
-
+        else:
+            raise ValueError(f"Unknown action!: {action}!")

@@ -168,4 +168,4 @@ class TestOptimalExpert(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    TestOptimalExpert().run()

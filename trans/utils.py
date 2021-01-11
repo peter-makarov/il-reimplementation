@@ -3,8 +3,24 @@ from typing import Any, Dict, List, Optional, TextIO
 import logging
 import time
 import os
+
+import dataclasses
 import unicodedata
 import re
+
+
+@dataclasses.dataclass
+class Sample:
+    input: str
+    target: Optional[str]
+    encoded_input: List[int]
+
+
+@dataclasses.dataclass
+class DecodingOutput:
+    accuracy: float
+    loss: float
+    predictions: List[str]
 
 
 class OpenNormalize:

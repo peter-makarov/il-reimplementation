@@ -1,7 +1,6 @@
-from typing import List, Optional
+from typing import List
 
 import argparse
-import dataclasses
 import logging
 import math
 import progressbar
@@ -18,32 +17,19 @@ from trans import optimal_expert_substitutions
 from trans import sed
 from trans import utils
 
+
 random.seed(1)
 
 
-@dataclasses.dataclass
-class Sample:
-    input: str
-    target: Optional[str]
-    encoded_input: List[int]
-
-
-@dataclasses.dataclass
-class DecodingOutput:
-    accuracy: float
-    loss: float
-    predictions: List[str]
-
-
-def decode(transducer: transducer.Transducer, data: List[Sample],
-           beam_width: int = 1) -> DecodingOutput:
+def decode(transducer_: transducer.Transducer, data: List[utils.Sample],
+           beam_width: int = 1) -> utils.DecodingOutput:
     if beam_width == 1:
         decoding = lambda s: \
-            transducer.transduce(s.input, s.encoded_input)
+            transducer_.transduce(s.input, s.encoded_input)
     else:
         decoding = lambda s: \
-            transducer.beam_search_decode(s.input, s.encoded_input,
-                                          beam_width)[0]
+            transducer_.beam_search_decode(s.input, s.encoded_input,
+                                           beam_width)[0]
     predictions = []
     loss = 0
     correct = 0
@@ -61,9 +47,9 @@ def decode(transducer: transducer.Transducer, data: List[Sample],
             logging.info("\t\t...%d samples", j)
     logging.info("\t\t...%d samples", j + 1)
 
-    return DecodingOutput(accuracy=correct / len(data),
-                          loss=- loss / len(data),
-                          predictions=predictions)
+    return utils.DecodingOutput(accuracy=correct / len(data),
+                                loss=- loss / len(data),
+                                predictions=predictions)
 
 
 def inverse_sigmoid_schedule(k: int):
@@ -84,31 +70,31 @@ def main(args: argparse.Namespace):
     else:
         logging.info("Will perform training on unnormalized data.")
 
-    vocabulary = vocabulary.Vocabularies()
+    vocabulary_ = vocabulary.Vocabularies()
 
     training_data = []
     with utils.OpenNormalize(args.train, args.nfd) as f:
         for line in f:
             input_, target = line.rstrip().split("\t", 1)
-            encoded_input = vocabulary.encode_input(input_)
-            vocabulary.encode_actions(target)
-            sample = Sample(input_, target, encoded_input)
+            encoded_input = vocabulary_.encode_input(input_)
+            vocabulary_.encode_actions(target)
+            sample = utils.Sample(input_, target, encoded_input)
             training_data.append(sample)
 
-    logging.info("%d actions: %s", len(vocabulary.actions),
-                 vocabulary.actions)
-    logging.info("%d chars: %s", len(vocabulary.characters),
-                 vocabulary.characters)
+    logging.info("%d actions: %s", len(vocabulary_.actions),
+                 vocabulary_.actions)
+    logging.info("%d chars: %s", len(vocabulary_.characters),
+                 vocabulary_.characters)
     vocabulary_path = os.path.join(args.output, "vocabulary.pkl")
-    vocabulary.persist(vocabulary_path)
+    vocabulary_.persist(vocabulary_path)
     logging.info("Wrote vocabulary to %s.", vocabulary_path)
 
     development_data = []
     with utils.OpenNormalize(args.dev, args.nfd) as f:
         for line in f:
             input_, target = line.rstrip().split("\t", 1)
-            encoded_input = vocabulary.encode_unseen_input(input_)
-            sample = Sample(input_, target, encoded_input)
+            encoded_input = vocabulary_.encode_unseen_input(input_)
+            sample = utils.Sample(input_, target, encoded_input)
             development_data.append(sample)
 
     if args.test is not None:
@@ -117,17 +103,16 @@ def main(args: argparse.Namespace):
             for line in f:
                 input_, *optional_target = line.rstrip().split("\t", 1)
                 target = optional_target[0] if optional_target else None
-                encoded_input = vocabulary.encode_unseen_input(input_)
-                sample = Sample(input_, target, encoded_input)
+                encoded_input = vocabulary_.encode_unseen_input(input_)
+                sample = utils.Sample(input_, target, encoded_input)
                 test_data.append(sample)
 
     sed_aligner = sed.StochasticEditDistance.fit_from_data(
-        training_data, em_iterations=args.sed_em_iterations,
-        discount=args.sed_discount)
+        training_data, em_iterations=args.sed_em_iterations)
     expert = optimal_expert_substitutions.OptimalSubstitutionExpert(sed_aligner)
 
     model = dy.Model()
-    transducer = transducer.Transducer(model, vocabulary, expert, **dargs)
+    transducer_ = transducer.Transducer(model, vocabulary_, expert, **dargs)
 
     widgets = [progressbar.Bar(">"), " ", progressbar.ETA()]
     train_progress_bar = progressbar.ProgressBar(
@@ -169,7 +154,7 @@ def main(args: argparse.Namespace):
                 losses = []
                 dy.renew_cg()
                 for sample in batch:
-                    output = transducer.transduce(
+                    output = transducer_.transduce(
                         input_=sample.input,
                         encoded_input=sample.encoded_input,
                         target=sample.target,
@@ -190,7 +175,7 @@ def main(args: argparse.Namespace):
 
         logging.info("Evaluating on training data subset...")
         with utils.Timer():
-            train_accuracy = decode(transducer, train_subset).accuracy
+            train_accuracy = decode(transducer_, train_subset).accuracy
 
         if train_accuracy > best_train_accuracy:
             best_train_accuracy = train_accuracy
@@ -199,7 +184,7 @@ def main(args: argparse.Namespace):
 
         logging.info("Evaluating on development data...")
         with utils.Timer():
-            decoding_output = decode(transducer, development_data)
+            decoding_output = decode(transducer_, development_data)
             dev_accuracy = decoding_output.accuracy
             avg_dev_loss = decoding_output.loss
 
@@ -236,7 +221,7 @@ def main(args: argparse.Namespace):
         sys.exit(0)
 
     model = dy.Model()
-    transducer = transducer.Transducer(model, vocabulary, expert, **dargs)
+    transducer_ = transducer.Transducer(model, vocabulary_, expert, **dargs)
     model.populate(best_model_path)
 
     evaluations = [(development_data, "dev")]
@@ -247,12 +232,12 @@ def main(args: argparse.Namespace):
         logging.info("Evaluating best model on %s data using beam search "
                      "(beam width %d)...", dataset_name, args.beam_width)
         with utils.Timer():
-            greedy_decoding = decode(transducer, data)
+            greedy_decoding = decode(transducer_, data)
         utils.write_results(greedy_decoding.accuracy,
                             greedy_decoding.predictions, args.output,
                             args.nfd, dataset_name, dargs=dargs)
         with utils.Timer():
-            beam_decoding = decode(transducer, data, args.beam_width)
+            beam_decoding = decode(transducer_, data, args.beam_width)
         utils.write_results(beam_decoding.accuracy,
                             beam_decoding.predictions, args.output,
                             args.nfd, dataset_name, args.beam_width,
@@ -304,8 +289,6 @@ if __name__ == "__main__":
                         help="Maximal number of training epochs.")
     parser.add_argument("--batch-size", type=str, default=5,
                         help="Batch size.")
-    parser.add_argument("--sed-discount", type=float, default=-0.999,
-                        help="SED sparse EM discount.")
     parser.add_argument("--sed-em-iterations", type=int, default=10,
                         help="SED EM iterations.")
 
