@@ -14,7 +14,6 @@ from trans import utils
 
 
 LARGE_NEG_CONST = -float(10 ** 6)
-MAX_TARGET = 400
 
 
 @dataclasses.dataclass
@@ -24,11 +23,18 @@ class ParamDict:
     delta_ins: Dict[Any, float]
     delta_eos: float
 
-    def sum(self):
+    def sum(self) -> float:
         values = [self.delta_eos]
         for vs in (self.delta_sub, self.delta_ins, self.delta_del):
             values.extend(vs.values())
         return logsumexp(values)
+
+    @classmethod
+    def from_params(cls, other: "ParamDict"):
+        return cls(delta_sub=dict(other.delta_sub),
+                   delta_del=dict(other.delta_del),
+                   delta_ins=dict(other.delta_ins),
+                   delta_eos=other.delta_eos)
 
 
 class StochasticEditDistance(Aligner):
@@ -207,56 +213,6 @@ class StochasticEditDistance(Aligner):
                       for source, target in zip(sources, targets)])
         return float(ll)
 
-    class Gammas:
-        def __init__(self, sed: 'StochasticEditDistance'):
-            """
-            Container for non-normalized probabilities.
-            :param sed: Channel.
-            """
-            self.sed = sed
-            self.eos = LARGE_NEG_CONST
-            self.sub = {k: LARGE_NEG_CONST for k in self.sed.delta_sub}
-            self.del_ = {k: LARGE_NEG_CONST for k in self.sed.delta_del}
-            self.ins = {k: LARGE_NEG_CONST for k in self.sed.delta_ins}
-
-        def normalize(self):
-            """
-            Normalize probabilities and assign them to the channel's deltas.
-            :param discount: Unnormalized quantity for edits unseen in training.
-            """
-
-            #  log_discount = np.log(self.sed.discount)
-
-            denom = logsumexp(
-                [self.eos] +                                                    # np.log(self.sed.discount * self.sed.N)
-                list(self.del_.values()) + list(self.ins.values()) +
-                list(self.sub.values())
-            )
-            self.sub = {
-                k: logsumexp([self.sub[k]]) - denom                             # log_discount
-                for k in self.sub
-            }
-            self.del_ = {
-                k: logsumexp([self.del_[k]]) - denom                            # log_discount
-                for k in self.del_
-            }
-            self.ins = {
-                k: logsumexp([self.ins[k]]) - denom                             # log_discount
-                for k in self.ins
-            }
-            self.eos = logsumexp([self.eos]) - denom                            # log_discount
-
-            check_sum = logsumexp(
-                list(self.sub.values()) + list(self.del_.values()) +
-                list(self.ins.values()) + [self.eos]
-            )
-            assert np.isclose(0., check_sum), check_sum
-            # set the channel's delta to log normalized gammas
-            self.sed.delta_eos = self.eos
-            self.sed.delta_sub = self.sub
-            self.sed.delta_ins = self.ins
-            self.sed.delta_del = self.del_
-
     def em(self, sources: Sequence[Any], targets: Sequence[Any],
            iterations: int = 10) -> None:
         """Update parameters using Expectation-Maximization.
@@ -267,51 +223,66 @@ class StochasticEditDistance(Aligner):
             iterations: Number of iterations of EM.
         """
 
-        logging.info("Initial weighted LL=%.4f", self.log_likelihood(sources, targets))
+        logging.info(
+            "Initial weighted LL=%.4f", self.log_likelihood(sources, targets))
 
         for i in range(iterations):
-            gammas = self.Gammas(self)
-            for sample_num, (source, target) in enumerate(zip(sources, targets)):
-                if len(target) > MAX_TARGET:
-                    continue
-                self.expectation_step(source, target, gammas)
-                if sample_num > 0 and sample_num % 1000 == 0:
-                    logging.info("\t...processed %d samples", sample_num)
-            gammas.normalize()  # maximization step and assignment
+            gammas = ParamDict.from_params(self.params)
+            for j, (source, target) in enumerate(zip(sources, targets)):
+                self.e_step(source, target, gammas)
+                if j > 0 and j % 1000 == 0:
+                    logging.info("\t...processed %d samples", j)
+            self.m_step(gammas)
             logging.info("IT_%d=%.4f", i, self.log_likelihood(sources, targets))
 
-    def expectation_step(self, source: Sequence[Any], target: Sequence[Any],
-                         gammas: Gammas) -> None:
+    def e_step(self, source: Sequence[Any], target: Sequence[Any],
+               gammas: ParamDict) -> None:
         """
-        Accumumate soft counts.
-        :param source: Source string.
-        :param target: Target string.
-        :param gammas: Unnormalized probabilities that we are learning.
-        :param weight: Weight for the pair (`source`, `target`).
+        Accumulates soft counts.
+
+        Args:
+            source: Source string.
+            target: Target string.
+            gammas: Unnormalized log weights.
         """
         alpha = self.forward_evaluate(source, target)
         beta = self.backward_evaluate(source, target)
-        gammas.eos = logsumexp([gammas.eos, 0.])
+        gammas.delta_eos = logsumexp([gammas.delta_eos, 0.])
         T, V = len(source), len(target)
         for t in range(T + 1):
             for v in range(V + 1):
-                # (alpha = probability of prefix) * probability of edit * (beta = probability of suffix)
                 rest = beta[t, v] - alpha[T, V]
                 schar = source[t - 1]
                 tchar = target[v - 1]
                 stpair = schar, tchar
-                if t > 0 and schar in gammas.del_:
-                    gammas.del_[schar] = logsumexp(
-                        [gammas.del_[schar],
+                if t > 0 and schar in gammas.delta_del:
+                    gammas.delta_del[schar] = logsumexp(
+                        [gammas.delta_del[schar],
                          alpha[t - 1, v] + self.delta_del[schar] + rest])
-                if v > 0 and tchar in gammas.ins:
-                    gammas.ins[tchar] = logsumexp(
-                        [gammas.ins[tchar],
+                if v > 0 and tchar in gammas.delta_ins:
+                    gammas.delta_ins[tchar] = logsumexp(
+                        [gammas.delta_ins[tchar],
                          alpha[t, v - 1] + self.delta_ins[tchar] + rest])
-                if t > 0 and v > 0 and stpair in gammas.sub:
-                    gammas.sub[stpair] = logsumexp(
-                        [gammas.sub[stpair],
+                if t > 0 and v > 0 and stpair in gammas.delta_sub:
+                    gammas.delta_sub[stpair] = logsumexp(
+                        [gammas.delta_sub[stpair],
                          alpha[t - 1, v - 1] + self.delta_sub[stpair] + rest])
+
+    def m_step(self, gammas: ParamDict) -> None:
+        """Normalizes weights and stores them."""
+
+        denom = gammas.sum()
+        gammas.delta_sub = {k: (v - denom) for k, v in gammas.delta_sub.items()}
+        gammas.delta_del = {k: (v - denom) for k, v in gammas.delta_del.items()}
+        gammas.delta_ins = {k: (v - denom) for k, v in gammas.delta_ins.items()}
+        gammas.delta_eos -= denom
+
+        assert np.isclose(0., gammas.sum()), gammas.sum()
+        self.params = gammas
+        self.delta_sub = gammas.delta_sub
+        self.delta_del = gammas.delta_del
+        self.delta_ins = gammas.delta_ins
+        self.delta_eos = gammas.delta_eos
 
     def viterbi_distance(self, source: Sequence, target: Sequence,
                          with_alignment: bool = False) -> \
