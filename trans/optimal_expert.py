@@ -59,7 +59,7 @@ def action_sequence_cost(x: Sequence[Any], y: Sequence[Any],
 
 
 @dataclasses.dataclass
-class Prefix(object):
+class Prefix:
     y: Sequence[Any]
     t: Sequence[Any]
     j: int
@@ -77,7 +77,7 @@ class Prefix(object):
 
 
 @dataclasses.dataclass
-class ActionsPrefix(object):
+class ActionsPrefix:
     actions: Set[Edit]
     prefix: Prefix
 

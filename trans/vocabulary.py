@@ -11,7 +11,7 @@ UNK_CHAR = "<UNK>"
 
 class Vocabulary:
 
-    EXTRAS = BeginOfSequence(), EndOfSequence(), UNK_CHAR,
+    EXTRAS = BeginOfSequence(), EndOfSequence(), UNK_CHAR
 
     def __init__(self, i2w: Optional[Iterable[Any]] = None):
         if i2w is None:

@@ -77,17 +77,17 @@ class StochasticEditDistance(actions.Aligner):
         source_alphabet = set(source_alphabet)
         target_alphabet = set(target_alphabet)
 
-        N = (len(source_alphabet) * len(target_alphabet) +
+        n = (len(source_alphabet) * len(target_alphabet) +
              len(source_alphabet) + len(target_alphabet) + 1)
 
         if copy_probability is None:
-            uniform_weight = np.log(1 / N)
+            uniform_weight = np.log(1 / n)
             log_copy_prob = uniform_weight  # probability of a copy action
             log_rest_prob = uniform_weight  # probability of any other action
         elif 0 < copy_probability < 1:
             # split copy mass over individual copy actions
             num_copy_edits = len(target_alphabet & source_alphabet)
-            num_rest = N - num_copy_edits
+            num_rest = n - num_copy_edits
             log_copy_prob = np.log(copy_probability / num_copy_edits)
             log_rest_prob = np.log((1 - copy_probability) / num_rest)
         else:
@@ -312,41 +312,40 @@ class StochasticEditDistance(actions.Aligner):
         optim_score = alpha[T, V]
         if not with_alignment:
             return optim_score
-        else:
-            # compute an optimal alignment
-            alignment = []
-            ind_w, ind_c = len(source), len(target)
-            while ind_w >= 0 and ind_c >= 0:
-                if ind_w == 0 and ind_c == 0:
-                    return alignment[::-1], optim_score
-                elif ind_w == 0:
-                    # can only go left, i.e. via insertions
-                    ind_c -= ind_c
-                    alignment.append(
-                        Ins(target[ind_c]))  # minus 1 is due to offset
-                elif ind_c == 0:
-                    # can only go up, i.e. via deletions
-                    ind_w -= ind_w
-                    alignment.append(
-                        Del(source[ind_w]))  # minus 1 is due to offset
+        # compute an optimal alignment
+        alignment = []
+        ind_w, ind_c = len(source), len(target)
+        while ind_w >= 0 and ind_c >= 0:
+            if ind_w == 0 and ind_c == 0:
+                return alignment[::-1], optim_score
+            if ind_w == 0:
+                # can only go left, i.e. via insertions
+                ind_c -= ind_c
+                alignment.append(
+                    Ins(target[ind_c]))  # minus 1 is due to offset
+            elif ind_c == 0:
+                # can only go up, i.e. via deletions
+                ind_w -= ind_w
+                alignment.append(
+                    Del(source[ind_w]))  # minus 1 is due to offset
+            else:
+                # pick the smallest cost actions
+                pind_w = ind_w - 1
+                pind_c = ind_c - 1
+                action_idx = np.argmax([alpha[pind_w, pind_c],
+                                        alpha[ind_w, pind_c],
+                                        alpha[pind_w, ind_c]])
+                if action_idx == 0:
+                    action = Sub(source[pind_w], target[pind_c])
+                    ind_w = pind_w
+                    ind_c = pind_c
+                elif action_idx == 1:
+                    action = Ins(target[pind_c])
+                    ind_c = pind_c
                 else:
-                    # pick the smallest cost actions
-                    pind_w = ind_w - 1
-                    pind_c = ind_c - 1
-                    action_idx = np.argmax([alpha[pind_w, pind_c],
-                                            alpha[ind_w, pind_c],
-                                            alpha[pind_w, ind_c]])
-                    if action_idx == 0:
-                        action = Sub(source[pind_w], target[pind_c])
-                        ind_w = pind_w
-                        ind_c = pind_c
-                    elif action_idx == 1:
-                        action = Ins(target[pind_c])
-                        ind_c = pind_c
-                    else:
-                        action = Del(source[pind_w])
-                        ind_w = pind_w
-                    alignment.append(action)
+                    action = Del(source[pind_w])
+                    ind_w = pind_w
+                alignment.append(action)
 
     def stochastic_distance(self, source: Sequence[Any],
                             target: Sequence[Any]) -> float:
@@ -393,15 +392,14 @@ class StochasticEditDistance(actions.Aligner):
     def action_cost(self, action: Edit) -> float:
         if isinstance(action, Del):
             return -self.delta_del.get(action.old, self.default)
-        elif isinstance(action, Ins):
+        if isinstance(action, Ins):
             return -self.delta_ins.get(action.new, self.default)
-        elif isinstance(action, Sub):
+        if isinstance(action, Sub):
             return -self.delta_sub.get(
                 (action.old, action.new), self.default)
-        elif isinstance(action, EndOfSequence):
+        if isinstance(action, EndOfSequence):
             return -self.delta_eos
-        elif isinstance(action, Copy):
+        if isinstance(action, Copy):
             return -self.delta_sub.get(
                 (action.old, action.old), self.default)
-        else:
-            raise ValueError(f"Unknown action!: {action}!")
+        raise ValueError(f"Unknown action!: {action}!")

@@ -1,11 +1,11 @@
 """Optimal expert that additionally uses substitution actions."""
 from typing import Any, Iterable, List, Sequence
 
+import numpy as np
+
 from trans import actions
 from trans import optimal_expert
 from trans.actions import Copy, Del, Edit, EndOfSequence, Ins, Sub
-
-import numpy as np
 
 
 class EditDistanceAligner(actions.Aligner):
@@ -28,14 +28,13 @@ class EditDistanceAligner(actions.Aligner):
     def action_cost(self, action: Edit):
         if isinstance(action, Copy) or isinstance(action, EndOfSequence):
             return 0
-        elif isinstance(action, Del):
+        if isinstance(action, Del):
             return self.del_cost
-        elif isinstance(action, Ins):
+        if isinstance(action, Ins):
             return self.ins_cost
-        elif isinstance(action, Sub):
+        if isinstance(action, Sub):
             return self.sub_cost
-        else:
-            raise ValueError(f"Unexpected action: {action}!")
+        raise ValueError(f"Unexpected action: {action}!")
 
 
 class NoSubstitutionAligner(EditDistanceAligner):
@@ -46,8 +45,7 @@ class NoSubstitutionAligner(EditDistanceAligner):
     def action_cost(self, action: Edit):
         if isinstance(action, Sub):
             return np.inf
-        else:
-            return super().action_cost(action)
+        return super().action_cost(action)
 
 
 class OptimalSubstitutionExpert(optimal_expert.OptimalExpert):

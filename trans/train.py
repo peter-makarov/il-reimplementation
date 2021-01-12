@@ -4,10 +4,11 @@ from typing import List
 import argparse
 import logging
 import math
-import progressbar
 import os
 import random
 import sys
+
+import progressbar
 
 import dynet as dy
 import numpy as np

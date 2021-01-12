@@ -174,7 +174,7 @@ class Transducer:
         logits += dy.inputVector(log_validity)
         log_sum_selected_terms = dy.logsumexp(
             [dy.pick(logits, index=e) for e in optimal_actions])
-        normalization_term = dy.logsumexp([l for l in logits])
+        normalization_term = dy.logsumexp(list(logits))
         return log_sum_selected_terms - normalization_term
 
     def transduce(self, input_: str, encoded_input: List[int],
