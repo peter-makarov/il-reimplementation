@@ -1,8 +1,7 @@
 """Optimal expert for character-level string transduction.
 
 Given an input string x, a target string t, alignment index i, and a partial
-prediction y, return optimal cost-to-go for all valid edit actions.
-"""
+prediction y, it returns optimal cost-to-go for all valid edit actions."""
 from typing import Any, Iterable, List, Sequence, Set
 import abc
 import dataclasses

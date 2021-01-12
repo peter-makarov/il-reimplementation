@@ -1,3 +1,4 @@
+"""Classes for edit actions and aligner base class."""
 from typing import Any, Sequence
 import abc
 import dataclasses

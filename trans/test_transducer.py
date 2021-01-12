@@ -6,11 +6,11 @@ import numpy as np
 from scipy.special import log_softmax
 
 
+from trans import optimal_expert
 from trans import transducer
 from trans import vocabulary
-from trans import optimal_expert
-from trans.actions import Copy, Sub, ConditionalCopy, ConditionalSub, \
-    ConditionalIns, ConditionalDel
+from trans.actions import Copy, ConditionalCopy, ConditionalDel, \
+    ConditionalIns, ConditionalSub, Sub
 
 
 np.random.seed(1)

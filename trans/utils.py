@@ -1,19 +1,18 @@
+"""Utility functions and classes."""
 from typing import Any, Dict, List, Optional, TextIO
-
-import logging
-import time
-import os
-
 import dataclasses
-import unicodedata
+import logging
+import os
+import time
 import re
+import unicodedata
 
 
 @dataclasses.dataclass
 class Sample:
     input: str
     target: Optional[str]
-    encoded_input: List[int]
+    encoded_input: Optional[List[int]] = None
 
 
 @dataclasses.dataclass

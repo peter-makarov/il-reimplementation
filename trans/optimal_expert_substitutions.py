@@ -1,12 +1,14 @@
+"""Optimal expert that additionally uses substitution actions."""
 from typing import Any, Iterable, List, Sequence
 
-from trans.optimal_expert import ActionsPrefix, OptimalExpert, Prefix, edit_distance
-from trans.actions import Aligner, Copy, Del, Ins, Sub, Edit, EndOfSequence
+from trans import actions
+from trans import optimal_expert
+from trans.actions import Copy, Del, Edit, EndOfSequence, Ins, Sub
 
 import numpy as np
 
 
-class EditDistanceAligner(Aligner):
+class EditDistanceAligner(actions.Aligner):
 
     def __init__(self, del_cost=1., ins_cost=1., sub_cost=1.):
         self.del_cost = del_cost
@@ -15,7 +17,7 @@ class EditDistanceAligner(Aligner):
 
     def action_sequence_cost(self, x: Sequence[Any], y: Sequence[Any],
                              x_offset: int, y_offset: int) -> float:
-        ed = edit_distance(
+        ed = optimal_expert.edit_distance(
             x, y,
             del_cost=self.del_cost, ins_cost=self.ins_cost,
             sub_cost=self.sub_cost,
@@ -48,19 +50,20 @@ class NoSubstitutionAligner(EditDistanceAligner):
             return super().action_cost(action)
 
 
-class OptimalSubstitutionExpert(OptimalExpert):
+class OptimalSubstitutionExpert(optimal_expert.OptimalExpert):
 
-    def __init__(self, aligner: Aligner, maximum_output_length: int = 150):
+    def __init__(self, aligner: actions.Aligner,
+                 maximum_output_length: int = 150):
         super().__init__(maximum_output_length)
         self.aligner = aligner
 
     def find_valid_actions(self, x: Sequence[Any], i: int, y: Sequence[Any],
-                           prefixes: Iterable[Prefix]):
+                           prefixes: Iterable[optimal_expert.Prefix]):
         if len(y) >= self.maximum_output_length:
             return {EndOfSequence()}
         input_not_empty = i < len(x)
         attention = x[i] if input_not_empty else None
-        actions_prefixes: List[ActionsPrefix] = []
+        actions_prefixes: List[optimal_expert.ActionsPrefix] = []
         for prefix in prefixes:
             prefix_insert = prefix.leftmost_of_suffix
             if prefix_insert is None:
@@ -74,12 +77,12 @@ class OptimalSubstitutionExpert(OptimalExpert):
                     else:
                         valid_actions.add(Sub(old=attention, new=prefix_insert))
                 valid_actions.add(Del(attention))
-            actions_prefix = ActionsPrefix(valid_actions, prefix)
+            actions_prefix = optimal_expert.ActionsPrefix(valid_actions, prefix)
             actions_prefixes.append(actions_prefix)
         return actions_prefixes
 
     def roll_out(self, x: Sequence[Any], t: Sequence[Any], i: int,
-                 actions_prefixes: Iterable[ActionsPrefix]):
+                 actions_prefixes: Iterable[optimal_expert.ActionsPrefix]):
         costs_to_go = dict()
         for actions_prefix in actions_prefixes:
             suffix_begin = actions_prefix.prefix.j

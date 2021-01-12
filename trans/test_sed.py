@@ -4,8 +4,9 @@ import unittest
 
 import numpy as np
 
-from trans.sed import StochasticEditDistance, Sub, Ins
-from trans.test_optimal_expert_substitutions import to_sample
+from trans.actions import Sub, Ins
+from trans import sed
+from trans import test_optimal_expert_substitutions
 
 
 class TestTransducer(unittest.TestCase):
@@ -15,30 +16,30 @@ class TestTransducer(unittest.TestCase):
         self.source_alphabet1 = list("abcdefg")
         self.target_alphabet1 = list("fghijk")
 
-        self.smart_sed = StochasticEditDistance.build_sed(
+        self.smart_sed = sed.StochasticEditDistance.build_sed(
             self.source_alphabet1, self.target_alphabet1)
 
     def test_sed_random_initialization(self):
 
-        sed = StochasticEditDistance.build_sed(
+        sed_ = sed.StochasticEditDistance.build_sed(
             self.source_alphabet1, self.target_alphabet1, copy_probability=None)
-        eos_weight = sed.delta_eos
+        eos_weight = sed_.delta_eos
 
         for weight_dict in ("delta_del", "delta_ins", "delta_sub"):
-            for weight in getattr(sed, weight_dict).values():
+            for weight in getattr(sed_, weight_dict).values():
                 self.assertTrue(np.isclose(eos_weight, weight))
 
     def test_sed_copy_biased_initialization(self):
 
-        sed = StochasticEditDistance.build_sed(
+        sed_ = sed.StochasticEditDistance.build_sed(
             self.source_alphabet1, self.target_alphabet1)
-        eos_weight = sed.delta_eos
+        eos_weight = sed_.delta_eos
 
         for weight_dict in ("delta_del", "delta_ins"):
-            for weight in getattr(sed, weight_dict).values():
+            for weight in getattr(sed_, weight_dict).values():
                 self.assertTrue(np.isclose(eos_weight, weight))
 
-        for (x, y), weight in sed.delta_sub.items():
+        for (x, y), weight in sed_.delta_sub.items():
             if x == y:
                 self.assertFalse(np.isclose(eos_weight, weight))
             else:
@@ -77,15 +78,15 @@ class TestTransducer(unittest.TestCase):
         source_alphabet = {c for source in sources for c in source}
         target_alphabet = {c for target in targets for c in target}
 
-        sed = StochasticEditDistance.build_sed(
+        sed_ = sed.StochasticEditDistance.build_sed(
             source_alphabet, target_alphabet)
 
-        o = sed.stochastic_distance(sources[1], targets[1])
+        o = sed_.stochastic_distance(sources[1], targets[1])
         logging.info(o)
 
-        before_ll = sed.log_likelihood(sources, targets)
-        sed.update_model(sources, targets, iterations=1)
-        after_ll = sed.log_likelihood(sources, targets)
+        before_ll = sed_.log_likelihood(sources, targets)
+        sed_.update_model(sources, targets, iterations=1)
+        after_ll = sed_.log_likelihood(sources, targets)
         self.assertTrue(before_ll <= after_ll)
 
     def test_fit_from_data(self):
@@ -95,9 +96,9 @@ class TestTransducer(unittest.TestCase):
             "abolir\ta b ɔ l i ʁ", "abonnement\ta b ɔ n m ɑ"
         ]
 
-        data = map(to_sample, input_lines)
-        sed = StochasticEditDistance.fit_from_data(data, em_iterations=1)
-        logging.info(sed.params)  # @TODO
+        data = map(test_optimal_expert_substitutions.to_sample, input_lines)
+        sed_ = sed.StochasticEditDistance.fit_from_data(data, em_iterations=1)
+        logging.info(sed_.params)
 
 
 if __name__ == "__main__":

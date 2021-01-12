@@ -1,3 +1,4 @@
+"""Trains a grapheme-to-phoneme neural transducer."""
 from typing import List
 
 import argparse
@@ -11,11 +12,11 @@ import sys
 import dynet as dy
 import numpy as np
 
-from trans import vocabulary
-from trans import transducer
 from trans import optimal_expert_substitutions
 from trans import sed
+from trans import transducer
 from trans import utils
+from trans import vocabulary
 
 
 random.seed(1)

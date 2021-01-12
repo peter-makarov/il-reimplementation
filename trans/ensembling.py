@@ -1,25 +1,19 @@
+"""Performs majority-vote ensembling over files with predictions."""
 from typing import TextIO
 
 import argparse
 import collections
-import dataclasses
 import logging
 import os
 
 from trans import utils
 
 
-@dataclasses.dataclass
-class Sample:
-    input: str
-    prediction: str
-
-
 def read_files(fileobj: TextIO):
     samples = []
     for line in fileobj:
         input_, prediction = line.rstrip().split("\t", 1)
-        samples.append(Sample(input_, prediction))
+        samples.append(utils.Sample(input_, prediction))
     return samples
 
 
@@ -58,10 +52,10 @@ def main(args: argparse.Namespace):
                     f"Input mismatch between gold and {j}th system: "
                     f"Line {line_number}: {input_} vs {system_sample.input}."
                 )
-            sample_predictions.append(system_sample.prediction)
+            sample_predictions.append(system_sample.target)
         majority_prediction = \
             collections.Counter(sample_predictions).most_common(1)[0][0]
-        if majority_prediction == gold_sample.prediction:
+        if majority_prediction == gold_sample.target:
             correct += 1
         predictions.append(f"{input_}\t{majority_prediction}")
         line_number += 1
@@ -71,7 +65,8 @@ def main(args: argparse.Namespace):
     decoding_name = f"{len(args.systems)}ensemble"
     utils.write_results(
         accuracy, predictions, args.output, normalize=False,
-        dataset_name=dataset_name, decoding_name=decoding_name)
+        dataset_name=dataset_name, decoding_name=decoding_name,
+        dargs=args.__dict__)
 
 
 if __name__ == "__main__":

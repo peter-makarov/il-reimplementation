@@ -9,8 +9,9 @@ import pickle
 import numpy as np
 from scipy.special import logsumexp
 
-from trans.actions import Aligner, Copy, Del, Edit, EndOfSequence, Ins, Sub
+from trans import actions
 from trans import utils
+from trans.actions import Copy, Del, Edit, EndOfSequence, Ins, Sub
 
 
 LARGE_NEG_CONST = -float(10 ** 6)
@@ -37,16 +38,15 @@ class ParamDict:
                    delta_eos=other.delta_eos)
 
 
-class StochasticEditDistance(Aligner):
-    """
-    Implementation of the Stochastic Edit Distance model from
-    Ristad & Yianilos 1998 "Learning String Edit Distance". The model is a
+class StochasticEditDistance(actions.Aligner):
+    """Implementation of the Stochastic Edit Distance (SED) model from
+    Ristad & Yianilos 1998 "Learning String Edit Distance." The model is a
     memoryless probabilistic weighted finite-state transducer that by use of
-    character edits (insertions, deletions, substitutions) maps one string to
+    character edits (insertions, deletions, substitutions) turns one string to
     another. Edit weights are learned with Expectation-Maximization.
 
     Args:
-        param: SED weights."""
+        param: SED log weights."""
 
     def __init__(self, params: ParamDict, *args, **kwargs) -> None:
 
@@ -65,18 +65,15 @@ class StochasticEditDistance(Aligner):
     def build_sed(cls, source_alphabet: Iterable[Any],
                   target_alphabet: Iterable[Any],
                   copy_probability: Optional[float] = 0.9):
-        """
-        Builds a SED given a source and a target alphabets. If copy_proba is not
-        None, distribute this probability mass across copy actions to bias
-        towards copying.
+        """Builds a SED given a source and a target alphabets. If
+        copy_probability is not None, distributes this probability mass across
+        all copy actions to bias SED towards copying.
 
         Args:
             source_alphabet: Characters of all input strings.
             target_alphabet: Characters of all target strings.
             copy_probability: On weight init, how much mass to give to copy
-                edits.
-        """
-
+                edits."""
         source_alphabet = set(source_alphabet)
         target_alphabet = set(target_alphabet)
 
@@ -128,8 +125,6 @@ class StochasticEditDistance(Aligner):
 
     @classmethod
     def from_pickle(cls, path2pkl: str):
-        """Load parameters from a pickle file."""
-
         logging.info("Loading sed channel parameters from file: ", path2pkl)
         with open(path2pkl, "rb") as w:
             params: ParamDict = pickle.load(w)
@@ -145,7 +140,6 @@ class StochasticEditDistance(Aligner):
 
         Computes dynamic programming table (in log real) filled with forward
         log probabilities."""
-
         T, V = len(source), len(target)
         alpha = np.full((T + 1, V + 1), LARGE_NEG_CONST)
         alpha[0, 0] = 0.
@@ -179,7 +173,6 @@ class StochasticEditDistance(Aligner):
         Compute dynamic programming table (in log real) filled with backward log
         probabilities (the probabilities of the suffix, i.e.
         p(source[t:], target[v:]). E.g. p("", "a") = p(ins(a))*p(#)."""
-
         T, V = len(source), len(target)
         beta = np.full((T + 1, V + 1), LARGE_NEG_CONST)
         beta[T, V] = self.delta_eos
@@ -220,9 +213,7 @@ class StochasticEditDistance(Aligner):
         Args:
             sources: Source strings.
             targets: Target strings.
-            iterations: Number of iterations of EM.
-        """
-
+            iterations: Number of iterations of EM."""
         logging.info(
             "Initial weighted LL=%.4f", self.log_likelihood(sources, targets))
 
@@ -237,14 +228,12 @@ class StochasticEditDistance(Aligner):
 
     def e_step(self, source: Sequence[Any], target: Sequence[Any],
                gammas: ParamDict) -> None:
-        """
-        Accumulates soft counts.
+        """Accumulates soft counts.
 
         Args:
             source: Source string.
             target: Target string.
-            gammas: Unnormalized log weights.
-        """
+            gammas: Unnormalized log weights."""
         alpha = self.forward_evaluate(source, target)
         beta = self.backward_evaluate(source, target)
         gammas.delta_eos = logsumexp([gammas.delta_eos, 0.])
@@ -270,7 +259,6 @@ class StochasticEditDistance(Aligner):
 
     def m_step(self, gammas: ParamDict) -> None:
         """Normalizes weights and stores them."""
-
         denom = gammas.sum()
         gammas.delta_sub = {k: (v - denom) for k, v in gammas.delta_sub.items()}
         gammas.delta_del = {k: (v - denom) for k, v in gammas.delta_del.items()}
@@ -299,8 +287,7 @@ class StochasticEditDistance(Aligner):
 
         Returns:
             Probability score and, optionally, the sequence of edits that gives
-            this score.
-        """
+            this score."""
         T, V = len(source), len(target)
         alpha = np.full((T + 1, V + 1), LARGE_NEG_CONST)
         alpha[0, 0] = 0.
@@ -371,8 +358,6 @@ class StochasticEditDistance(Aligner):
         Args:
             source: Source string.
             target: Target string.
-            with_alignment: Whether to output the corresponding sequence of
-                edits.
 
         Returns:
             Probability score.
@@ -384,15 +369,13 @@ class StochasticEditDistance(Aligner):
                      iterations: int = 10,
                      output_path: Optional[str] = None,
                      **kwargs) -> None:
-        """
-        Update parameters by maximizing likelihood by Expectation-Maximization.
+        """Update weights by maximizing likelihood by Expectation-Maximization.
 
         Args:
             sources: Source strings.
             targets: Target strings.
             iterations: Number of iterations of EM.
-            output_path: Path where to write learned weights.
-        """
+            output_path: Path where to write learned weights."""
         logging.info("Updating model parameters by maximizing likelihood using "
                      "EM (%d iterations).", iterations)
         self.em(sources, targets, iterations)

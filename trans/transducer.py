@@ -1,3 +1,4 @@
+"""Defines a neural transducer."""
 from typing import Any, Dict, List, Optional
 import dataclasses
 import functools
@@ -6,10 +7,11 @@ import heapq
 import dynet as dy
 import numpy as np
 
-from trans.optimal_expert import Expert
-from trans.actions import ConditionalCopy, ConditionalDel, ConditionalSub, \
-    ConditionalIns, GenerativeEdit, Edit, EndOfSequence
-from trans.vocabulary import BEGIN_WORD, COPY, DELETE, END_WORD, Vocabularies
+from trans import optimal_expert
+from trans import vocabulary
+from trans.actions import ConditionalCopy, ConditionalDel, ConditionalIns, \
+    ConditionalSub, Edit, EndOfSequence, GenerativeEdit
+from trans.vocabulary import BEGIN_WORD, COPY, DELETE, END_WORD
 
 
 MAX_ACTION_SEQ_LEN = 150
@@ -55,10 +57,10 @@ class Expansion:
 
 
 class Transducer:
-    def __init__(self, model, vocab: Vocabularies, expert: Expert,
-                 char_dim: int, action_dim: int, enc_hidden_dim: int,
-                 enc_layers: int, dec_hidden_dim: int, dec_layers: int,
-                 **kwargs):
+    def __init__(self, model, vocab: vocabulary.Vocabularies,
+                 expert: optimal_expert.Expert, char_dim: int, action_dim: int,
+                 enc_hidden_dim: int, enc_layers: int, dec_hidden_dim: int,
+                 dec_layers: int, **kwargs):
 
         self.vocab = vocab
         self.optimal_expert = expert
@@ -154,7 +156,6 @@ class Transducer:
 
         Returns:
             List of optimal actions as integer codes."""
-
         raw_action_scores = self.optimal_expert.score(
             input_, target, alignment, prediction)
         action_scores = self.remap_actions(raw_action_scores)

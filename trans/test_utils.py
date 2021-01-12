@@ -1,8 +1,8 @@
 """Unit tests for utils.py."""
-import unittest
-import tempfile
 import os
+import tempfile
 import unicodedata
+import unittest
 
 from trans import utils
 

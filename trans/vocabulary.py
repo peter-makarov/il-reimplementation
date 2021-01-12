@@ -1,8 +1,9 @@
+"""Vocabularies."""
 from typing import Any, List, Iterable, Optional
 import pickle
 
-from trans.actions import ConditionalSub, ConditionalCopy, ConditionalDel, \
-    ConditionalIns, EndOfSequence, BeginOfSequence
+from trans.actions import BeginOfSequence, ConditionalCopy, ConditionalDel, \
+    ConditionalIns, ConditionalSub, EndOfSequence
 
 
 UNK_CHAR = "<UNK>"

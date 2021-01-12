@@ -1,9 +1,9 @@
 """Unit tests for vocabulary.py."""
 import unittest
 
-from trans.actions import ConditionalDel, ConditionalCopy, ConditionalIns, \
-    ConditionalSub, BeginOfSequence, EndOfSequence
 from trans import vocabulary
+from trans.actions import BeginOfSequence, ConditionalDel, ConditionalCopy, \
+    ConditionalIns, ConditionalSub, EndOfSequence
 from trans.vocabulary import UNK_CHAR
 
 
