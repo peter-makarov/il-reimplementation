@@ -195,7 +195,7 @@ class Transducer:
         is_training = bool(target)
         input_emb = self.input_embedding(encoded_input, is_training)
         bidirectional_emb = \
-            self.bidirectional_encoding(input_emb)[1:]  # drop BEGIN_WORD_CHAR
+            self.bidirectional_encoding(input_emb)[1:]  # drop BEGIN_WORD
         input_length = len(bidirectional_emb)
         decoder = self.dec.initial_state()
 
@@ -279,7 +279,7 @@ class Transducer:
 
         input_emb = self.input_embedding(encoded_input, is_training=False)
         bidirectional_emb = \
-            self.bidirectional_encoding(input_emb)[1:]  # drop BEGIN_WORD_CHAR
+            self.bidirectional_encoding(input_emb)[1:]  # drop BEGIN_WORD
         input_length = len(bidirectional_emb)
         decoder = self.dec.initial_state()
 
