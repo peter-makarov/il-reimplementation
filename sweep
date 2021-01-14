@@ -12,7 +12,7 @@ readonly patience=12
 readonly sed_em_iterations=10
 
 readonly ensemble_size=5
-output=output
+readonly output=output
 
 mkdir -p "${output}"
 
