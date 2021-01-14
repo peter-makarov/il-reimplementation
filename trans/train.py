@@ -65,7 +65,7 @@ def main(args: argparse.Namespace):
     for key, value in dargs.items():
         logging.info("%s: %s", str(key).ljust(15), value)
 
-    os.mkdir(args.output)
+    os.makedirs(args.output)
 
     if args.nfd:
         logging.info("Will perform training on NFD-normalized data.")
