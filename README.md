@@ -1,8 +1,11 @@
-# Code for Paper Imitation Learning for Neural Morphological String Transduction
+# Neural transducer baseline
 
-Peter Makarov and Simon Clematide. 2018. EMNLP
+This directory contains a g2p neural transducer baseline, similar to that used by Makarov & Clematide 2020.
 
-https://arxiv.org/abs/1808.10701
+To run:
 
-An update on how to run the experiments from the paper is coming shortly.
-All test data reported in the paper can be found [here](https://github.com/ZurichNLP/emnlp2018-imitation-learning-for-neural-morphology-test-data).
+* Run `pip install -r requirements.txt`
+
+* Run `sweep`. This may take a while.
+
+Results will appear in the `output` directory.

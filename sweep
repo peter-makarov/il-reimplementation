@@ -14,6 +14,8 @@ readonly sed_em_iterations=10
 readonly ensemble_size=5
 output=output
 
+mkdir -p "${output}"
+
 # Finds languages.
 languages=""
 for filename in "${data}"/dev/*_dev.tsv; do
