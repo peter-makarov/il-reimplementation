@@ -1,5 +1,6 @@
 """Unit tests for optimal expert with substitution actions."""
 import heapq
+import os
 import unittest
 
 from trans import optimal_expert_substitutions
@@ -10,10 +11,13 @@ from trans.actions import Copy, Del, Ins, Sub, EndOfSequence
 
 class OptimalSubstitutionExpertTests(unittest.TestCase):
 
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
         aligner = optimal_expert_substitutions.NoSubstitutionAligner()
-        self.optimal_expert = \
+        cls.optimal_expert = \
             optimal_expert_substitutions.OptimalSubstitutionExpert(aligner)
+        cls.test_fre = os.path.join(os.path.dirname(__file__),
+                                    "test_data/fre_train.tsv")
 
     def test_score_end(self):
         x = "walk"
@@ -78,7 +82,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
 
         verbose = False
         input_lines = []
-        with open("test_data/fre_train.tsv") as f:
+        with open(self.test_fre) as f:
             try:
                 for _ in range(100):
                     input_lines.append(to_sample(next(f)))

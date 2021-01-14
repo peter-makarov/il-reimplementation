@@ -109,8 +109,10 @@ def main(args: argparse.Namespace):
                 sample = utils.Sample(input_, target, encoded_input)
                 test_data.append(sample)
 
+    sed_parameters_path = os.path.join(args.output, "sed.pkl")
     sed_aligner = sed.StochasticEditDistance.fit_from_data(
-        training_data, em_iterations=args.sed_em_iterations)
+        training_data, em_iterations=args.sed_em_iterations,
+        output_path=sed_parameters_path)
     expert = optimal_expert_substitutions.OptimalSubstitutionExpert(sed_aligner)
 
     model = dy.Model()

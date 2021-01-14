@@ -105,7 +105,8 @@ class StochasticEditDistance(actions.Aligner):
     @classmethod
     def fit_from_data(cls, lines: Iterable[utils.Sample],
                       copy_probability: float = None,
-                      em_iterations: int = 30):
+                      em_iterations: int = 30,
+                      output_path: str = None):
 
         source_alphabet = set()
         target_alphabet = set()
@@ -120,7 +121,8 @@ class StochasticEditDistance(actions.Aligner):
             targets.append(target)
 
         sed = cls.build_sed(source_alphabet, target_alphabet, copy_probability)
-        sed.update_model(sources, targets, iterations=em_iterations)
+        sed.update_model(sources, targets, iterations=em_iterations,
+                         output_path=output_path)
         return sed
 
     @classmethod
@@ -380,9 +382,8 @@ class StochasticEditDistance(actions.Aligner):
         self.em(sources, targets, iterations)
 
         if output_path is not None:
-            path2pkl = os.path.join(output_path, "param_dict.pkl")
-            self.to_pickle(path2pkl)
-            logging.info("Wrote latest model weights to %s.", path2pkl)
+            self.to_pickle(output_path)
+            logging.info("Wrote latest model weights to %s.", output_path)
 
     def action_sequence_cost(self, x: Sequence[Any], y: Sequence[Any],
                              x_offset: int, y_offset: int) -> float:
