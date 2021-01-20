@@ -11,12 +11,11 @@ setup(name="neural_transducer",
       packages=["trans"],
       test_suite="trans",
       install_requires=[
-          "dataclasses>=0.7",
           "dyNET==2.1",
           "editdistance>=0.5.2",
           "numpy>=1.15.4",
           "progressbar>=2.5",
           "scipy>=1.5.4",
       ],
-      python_requires=">=3.6",
+      python_requires="==3.7",
       )

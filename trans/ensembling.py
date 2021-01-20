@@ -19,7 +19,7 @@ def read_files(fileobj: TextIO):
 
 def main(args: argparse.Namespace):
 
-    os.path.exists(args.output) or os.os.makedirs(args.output)
+    os.path.exists(args.output) or os.makedirs(args.output)
 
     logging.info(
         "Producing a majority-vote prediction file from %d system files.",

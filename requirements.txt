@@ -1,5 +1,4 @@
 Cython==0.29
-dataclasses==0.7
 dyNET==2.1
 editdistance==0.5.2
 numpy==1.15.4

@@ -31,7 +31,7 @@ for model in $(seq 1 $ensemble_size); do
       --dev "${data}/dev/${language}_dev.tsv" \
       --test "${data}/test/${language}_test.tsv" \
       --sed-em-iterations ${sed_em_iterations} \
-      --output "${output}/${model}/${language}" \
+      --output "${output}/${language}/${model}" \
       --epochs "${epochs}" \
       --beam-width "${beam_width}" \
       --patience "${patience}" \
