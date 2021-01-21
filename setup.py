@@ -17,5 +17,5 @@ setup(name="neural_transducer",
           "progressbar>=2.5",
           "scipy>=1.5.4",
       ],
-      python_requires="==3.7",
+      python_requires="==3.7.*",
       )
