@@ -1,6 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Builds ensemble models for languages in the data directory.
 
-set -euo pipefail
+set -euox pipefail
 
 readonly data=../../data
 readonly eval=../../evaluation
@@ -13,53 +14,59 @@ readonly sed_em_iterations=10
 
 readonly ensemble_size=5
 readonly output=output
+readonly results=$output/results.txt
 
-mkdir -p "${output}"
+mkdir -p "$output"
 
 # Finds languages.
-languages=""
-for filename in "${data}"/dev/*_dev.tsv; do
-  languages+=" "$(basename "${filename%_dev.tsv}");
+languages=()
+for filename in "$data"/dev/*_dev.tsv; do
+  language_basename="${filename##*/}"
+  language="${language_basename%_dev.tsv}"
+  languages+=("$language")
   done
 
 # Computes individual models.
 for model in $(seq 1 $ensemble_size); do
-  for language in ${languages}; do
+  for language in "${languages[@]}"; do
     python trans/train.py \
-      --dynet-seed "${model}" \
-      --train "${data}/train/${language}_train.tsv" \
-      --dev "${data}/dev/${language}_dev.tsv" \
-      --test "${data}/test/${language}_test.tsv" \
-      --sed-em-iterations ${sed_em_iterations} \
-      --output "${output}/${language}/${model}" \
-      --epochs "${epochs}" \
-      --beam-width "${beam_width}" \
-      --patience "${patience}" \
-      --nfd  # applies NFD unicode normalization
+      --dynet-seed $model \
+      --train "$data/train/${language}_train.tsv" \
+      --dev "$data/dev/${language}_dev.tsv" \
+      --test "$data/test/${language}_test.tsv" \
+      --sed-em-iterations $sed_em_iterations \
+      --output "$output/$language/$model" \
+      --epochs $epochs \
+      --beam-width $beam_width \
+      --patience $patience \
+      --nfd &  # applies NFD unicode normalization
     done
   done
+wait
 
 # Computes ensembles.
-for language in ${languages}; do
+for language in "${languages[@]}"; do
   for split in test dev; do
+    echo "$language" "$split" >> "$results"
 
-    echo "${language}" "${split}"
-
-    gold="${data}/${split}/${language}_${split}.tsv"
-    prediction_file_basename="${split}_beam${beam_width}.predictions"
-    ensemble_directory="${output}/${language}/ensemble"
+    gold="$data/$split/${language}_$split.tsv"
+    prediction_file_basename="${split}_beam$beam_width.predictions"
+    ensemble_directory="$output/$language/ensemble"
 
     python trans/ensembling.py \
-      --gold "${gold}" \
-      --systems "${output}/${language}"/*/"${prediction_file_basename}" \
-      --output "${ensemble_directory}"
+      --gold "$gold" \
+      --systems "$output/$language"/*/"$prediction_file_basename" \
+      --output "$ensemble_directory"
 
     ensemble_file_basename="${split}_${ensemble_size}ensemble.predictions"
-    ensemble_file="${ensemble_directory}/${ensemble_file_basename}"
-    eval_file="${ensemble_directory}/gold_hypothesis.tsv"
-    paste "${gold}" "${ensemble_file}" | cut -f2,4 > "${eval_file}"
+    ensemble_file="$ensemble_directory/$ensemble_file_basename"
+    eval_file="$ensemble_directory/gold_hypothesis.tsv"
+    paste "$gold" "$ensemble_file" | cut -f2,4 > "$eval_file"
 
     # Evaluates.
-    python ${eval}/evaluate.py "${eval_file}"
+    python $eval/evaluate.py "$eval_file" >> "$results"
     done
   done
+wait
+
+echo Done.
