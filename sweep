@@ -46,7 +46,7 @@ wait
 
 # Computes ensembles.
 for language in "${languages[@]}"; do
-  for split in test dev; do
+  for split in dev test; do
     echo "$language" "$split" >> "$results"
 
     gold="$data/$split/${language}_$split.tsv"
@@ -67,6 +67,5 @@ for language in "${languages[@]}"; do
     python $eval/evaluate.py "$eval_file" >> "$results"
     done
   done
-wait
 
 echo Done.
