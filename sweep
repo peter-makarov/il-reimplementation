@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds ensemble models for languages in the data directory.
 
-set -euox pipefail
+set -euo pipefail
 
 readonly data=../../data
 readonly eval=../../evaluation
