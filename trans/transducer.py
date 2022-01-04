@@ -4,6 +4,8 @@ import dataclasses
 import functools
 import heapq
 
+import torch
+
 import dynet as dy
 import numpy as np
 
@@ -56,11 +58,14 @@ class Expansion:
         return self.negative_log_p == other.negative_log_p
 
 
-class Transducer:
-    def __init__(self, model, vocab: vocabulary.Vocabularies,
+class Transducer(torch.nn.Module):
+    def __init__(self, vocab: vocabulary.Vocabularies,
                  expert: optimal_expert.Expert, char_dim: int, action_dim: int,
                  enc_hidden_dim: int, enc_layers: int, dec_hidden_dim: int,
-                 dec_layers: int, **kwargs):
+                 dec_layers: int, device: torch.device, **kwargs):
+
+        super().__init__()
+        self.device = device
 
         self.vocab = vocab
         self.optimal_expert = expert
@@ -69,46 +74,76 @@ class Transducer:
         self.number_actions = len(vocab.actions)
         self.substitutions = self.vocab.substitutions
         self.inserts = self.vocab.insertions
-        lstm = dy.CoupledLSTMBuilder
 
         # encoder
-        self.char_lookup = model.add_lookup_parameters(
-            (self.number_characters, char_dim))
+        self.char_lookup = torch.nn.Embedding(
+            num_embeddings=self.number_characters,
+            embedding_dim=char_dim,
+            device=self.device,
+        )
 
-        self.fenc = lstm(enc_layers, char_dim, enc_hidden_dim, model)
-        self.benc = lstm(enc_layers, char_dim, enc_hidden_dim, model)
+        self.enc = torch.nn.LSTM(
+            input_size=char_dim,
+            hidden_size=enc_hidden_dim,
+            num_layers=enc_layers,
+            bidirectional=True,
+            device=self.device,
+        )
 
         # decoder
-        self.act_lookup = model.add_lookup_parameters(
-            (self.number_actions, action_dim))
+        self.act_lookup = torch.nn.Embedding(
+            num_embeddings=self.number_actions,
+            embedding_dim=action_dim,
+            device=self.device,
+        )
 
-        self.dec = lstm(dec_layers, enc_hidden_dim * 2 + action_dim,
-                        dec_hidden_dim, model)
+        decoder_input_dim = enc_hidden_dim * 2 + action_dim
+
+        self.dec = torch.nn.LSTM(
+            input_size=decoder_input_dim,
+            hidden_size=dec_hidden_dim,
+            num_layers=dec_layers,
+            device=self.device,
+        )
+
+        self.h0_c0 = (  # batch size 1
+            torch.zeros((dec_layers, 1, decoder_input_dim), device=self.device),
+            torch.zeros((dec_layers, 1, decoder_input_dim), device=self.device),
+        )
 
         # classifier
-        self.pW = model.add_parameters((self.number_actions, dec_hidden_dim))
-        self.pb = model.add_parameters(self.number_actions)
+        self.W = torch.nn.Linear(
+            in_features=dec_hidden_dim,
+            out_features=self.number_actions,
+            device=self.device,
+
+        )
 
     def input_embedding(self, input_: List[int], is_training: bool):
         """Returns a list of character embeddings for the input."""
-        if is_training:
-            emb = [self.char_lookup[i] for i in input_]
-        else:
-            # UNK is the average of trained embeddings (excluding UNK)
-            unk = dy.average([
-                self.char_lookup[i] for i in range(1, self.number_characters)])
-            emb = [self.char_lookup[i]
-                   if i < self.number_characters else unk for i in input_]
-        return emb
+        input_tensor = torch.tensor(
+            input_,
+            dtype=torch.int,
+            device=self.device,
+        )
+        emb = self.char_lookup(input_tensor)
 
-    def bidirectional_encoding(self, embeddings: List[dy.Expression]):
-        """Bidirectional LSTM encoding of the input embeddings."""
-        f_init = self.fenc.initial_state()
-        b_init = self.benc.initial_state()
-        f_states = f_init.add_inputs(embeddings)
-        b_states = reversed(b_init.add_inputs(reversed(embeddings)))
-        return [dy.concatenate([fs.output(), bs.output()])
-                for fs, bs in zip(f_states, b_states)]
+        if not is_training:
+
+            unk_indices = [
+                j for j, i in enumerate(input_) if i >= self.number_characters]
+
+            if unk_indices:
+                # UNK is the average of trained embeddings (excluding UNK)
+                ids_tensor = torch.tensor(
+                    range(1, self.number_characters),
+                    dtype=torch.int,
+                    device=self.device,
+                )
+                unk = self.char_lookup(ids_tensor).mean(dim=0)
+                emb[unk_indices] = unk
+
+        return emb.unsqueeze(1)  # Adds batch dimension.
 
     def compute_valid_actions(self, length_encoder_suffix: int) -> List[int]:
         valid_actions = [END_WORD]
@@ -146,7 +181,7 @@ class Transducer:
 
     def expert_rollout(self, input_: str, target: str, alignment: int,
                        prediction: List[str]) -> List[int]:
-        """Rolls out wit;h optimal expert policy.
+        """Rolls out with optimal expert policy.
 
         Args:
             input_: Input string (x).
@@ -165,44 +200,58 @@ class Transducer:
                 for action, value in action_scores.items()
                 if value == optimal_value]
 
-    def log_sum_softmax_loss(self, optimal_actions: List[int],
-                             logits: dy.Expression,
-                             valid_actions: List[int]) -> dy.Expression:
-        """Compute log loss similar to Riezler et al 2000."""
-        log_validity = np.full(self.number_actions, -np.inf)  # invalid
+    def mark_as_invalid(self, logits: torch.Tensor,
+                        valid_actions: List[int]) -> torch.Tensor:
+        log_validity = torch.full(
+            (self.number_actions,),
+            -np.inf,
+            device=self.device,
+        )  # All actions invalid by default.
         log_validity[valid_actions] = 0.
-        logits += dy.inputVector(log_validity)
-        log_sum_selected_terms = dy.logsumexp(
-            [dy.pick(logits, index=e) for e in optimal_actions])
-        normalization_term = dy.logsumexp(list(logits))
+        return logits + log_validity
+
+    def log_softmax(self, logits: torch.Tensor,
+                    valid_actions: List[int]) -> torch.Tensor:
+        logits_valid = self.mark_as_invalid(logits, valid_actions)
+        return torch.nn.functional.log_softmax(logits_valid, dim=0)
+
+    def log_sum_softmax_loss(self, optimal_actions: List[int],
+                             logits: torch.Tensor,
+                             valid_actions: List[int]) -> torch.Tensor:
+        """Compute log loss similar to Riezler et al 2000."""
+        logits_valid = self.mark_as_invalid(logits, valid_actions)
+        log_sum_selected_terms = torch.logsumexp(
+            logits_valid[optimal_actions],
+            dim=0,
+        )
+        enumerated_dim = tuple(range(logits_valid.dim()))
+        normalization_term = torch.logsumexp(
+            logits_valid,
+            dim=enumerated_dim,
+        )
         return log_sum_selected_terms - normalization_term
 
     def transduce(self, input_: str, encoded_input: List[int],
-                  target: Optional[str] = None, rollin: Optional[float] = None,
-                  external_cg: bool = True):
+                  target: Optional[str] = None, rollin: Optional[float] = None):
         """Runs the transducer for dynamic-oracle training and greedy decoding.
 
         Args:
             input_: Input string.
             encoded_input: List of integer character codes.
             target: Target string during training, `None` during prediction.
-            external_cg: Whether an external computation graph is defined.
             rollin: The probability with which an action sampled from the model
                     is executed. Used during training."""
-        if not external_cg:
-            dy.renew_cg()
-
         is_training = bool(target)
         input_emb = self.input_embedding(encoded_input, is_training)
-        bidirectional_emb = \
-            self.bidirectional_encoding(input_emb)[1:]  # drop BEGIN_WORD
+        bidirectional_emb_, _ = self.enc(input_emb)  # L x 1 x E
+        bidirectional_emb = bidirectional_emb_[1:]  # drop BEGIN_WORD
         input_length = len(bidirectional_emb)
-        decoder = self.dec.initial_state()
+        decoder = self.h0_c0
 
         alignment = 0
-        action_history: List[int] = [BEGIN_WORD]
+        action_history: List[int] = [torch.IntTensor([BEGIN_WORD])]
         output: List[str] = []
-        losses: List[dy.Expression] = []
+        losses: List[torch.Tensor] = []
         log_p = 0.
 
         while len(action_history) <= MAX_ACTION_SEQ_LEN:
@@ -211,14 +260,16 @@ class Transducer:
             valid_actions = self.compute_valid_actions(length_encoder_suffix)
 
             input_char_embedding = bidirectional_emb[alignment]
-            previous_action_embedding = self.act_lookup[action_history[-1]]
-            decoder_input = dy.concatenate(
-                [input_char_embedding, previous_action_embedding])
-            decoder = decoder.add_input(decoder_input)
+            previous_action_embedding = self.act_lookup(action_history[-1])
+            decoder_input = torch.cat(
+                (input_char_embedding, previous_action_embedding),
+                dim=1,
+            ).unsqueeze(1)  # Adds batch dimension.
+            decoder_output_, decoder = self.dec(decoder_input, decoder)
 
-            decoder_output = decoder.output()
-            logits = self.pW * decoder_output + self.pb
-            log_probs = dy.log_softmax(logits, valid_actions)
+            decoder_output = decoder_output_.squeeze(1)
+            logits = self.W(decoder_output)
+            log_probs = self.log_softmax(logits, valid_actions)
 
             log_probs_np = log_probs.npvalue()
 
