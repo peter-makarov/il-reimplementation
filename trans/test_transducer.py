@@ -5,6 +5,7 @@ import dynet as dy
 import numpy as np
 from scipy.special import log_softmax
 
+import torch
 
 from trans import optimal_expert
 from trans import transducer
@@ -20,14 +21,12 @@ class TransducerTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-
-        model = dy.Model()
         vocabulary_ = vocabulary.Vocabularies()
         vocabulary_.encode_input("foo")
         vocabulary_.encode_actions("bar")
         expert = optimal_expert.OptimalExpert()
         cls.transducer = transducer.Transducer(
-            model, vocabulary_, expert, 3, 3, 3, 1, 3, 1)
+            vocabulary_, expert, 3, 3, 3, 1, 3, 1, device=torch.device('cpu'))
 
     def test_sample(self):
         log_probs = log_softmax([5, 4, 10, 1])
