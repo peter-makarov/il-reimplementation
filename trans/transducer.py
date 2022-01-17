@@ -346,7 +346,7 @@ class Transducer(torch.nn.Module):
 
         while beam and beam_width > 0 and hypothesis_length <= MAX_ACTION_SEQ_LEN:
 
-            expansions: List[Hypothesis] = []
+            expansions: List[Expansion] = []
 
             for hypothesis in beam:
 
