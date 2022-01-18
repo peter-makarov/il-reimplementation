@@ -1,7 +1,6 @@
 """Unit tests for transducer.py."""
 import unittest
 
-import dynet as dy
 import numpy as np
 from scipy.special import log_softmax
 
@@ -26,7 +25,7 @@ class TransducerTests(unittest.TestCase):
         vocabulary_.encode_actions("bar")
         expert = optimal_expert.OptimalExpert()
         cls.transducer = transducer.Transducer(
-            vocabulary_, expert, 3, 3, 3, 1, 3, 1, device=torch.device('cpu'))
+            vocabulary_, expert, 3, 3, 3, 1, 3, 1)
 
     def test_sample(self):
         log_probs = log_softmax([5, 4, 10, 1])

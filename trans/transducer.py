@@ -1,18 +1,16 @@
 """Defines a neural transducer."""
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import dataclasses
 import functools
 import heapq
 
 import torch
-
-import dynet as dy
 import numpy as np
 
 from trans import optimal_expert
 from trans import vocabulary
 from trans.actions import ConditionalCopy, ConditionalDel, ConditionalIns, \
-    ConditionalSub, Edit, EndOfSequence, GenerativeEdit
+    ConditionalSub, Edit, EndOfSequence, GenerativeEdit, BeginOfSequence
 from trans.vocabulary import BEGIN_WORD, COPY, DELETE, END_WORD
 
 
@@ -25,7 +23,7 @@ class Output:
     action_history: List[Any]
     output: str
     log_p: float
-    losses: List[dy.Expression] = None
+    losses: List[torch.Tensor] = None
 
     def __lt__(self, other):
         return self.log_p < other.log_p
@@ -38,7 +36,7 @@ class Output:
 class Hypothesis:
     action_history: List[Any]
     alignment: int
-    decoder: dy.RNNState
+    decoder: Tuple[torch.Tensor, torch.Tensor]
     negative_log_p: float
     output: List[str]
 
@@ -47,7 +45,7 @@ class Hypothesis:
 @dataclasses.dataclass
 class Expansion:
     action: Any
-    decoder: dy.RNNState
+    decoder: Tuple[torch.Tensor, torch.Tensor]
     from_hypothesis: Hypothesis
     negative_log_p: float
 
@@ -62,10 +60,10 @@ class Transducer(torch.nn.Module):
     def __init__(self, vocab: vocabulary.Vocabularies,
                  expert: optimal_expert.Expert, char_dim: int, action_dim: int,
                  enc_hidden_dim: int, enc_layers: int, dec_hidden_dim: int,
-                 dec_layers: int, device: torch.device, **kwargs):
+                 dec_layers: int, device: str = 'cpu', **kwargs):
 
         super().__init__()
-        self.device = device
+        self.device = torch.device(device)
 
         self.vocab = vocab
         self.optimal_expert = expert
@@ -107,8 +105,8 @@ class Transducer(torch.nn.Module):
         )
 
         self.h0_c0 = (  # batch size 1
-            torch.zeros((dec_layers, 1, decoder_input_dim), device=self.device),
-            torch.zeros((dec_layers, 1, decoder_input_dim), device=self.device),
+            torch.zeros((dec_layers, 1, dec_hidden_dim), device=self.device),
+            torch.zeros((dec_layers, 1, dec_hidden_dim), device=self.device),
         )
 
         # classifier
@@ -213,7 +211,7 @@ class Transducer(torch.nn.Module):
     def log_softmax(self, logits: torch.Tensor,
                     valid_actions: List[int]) -> torch.Tensor:
         logits_valid = self.mark_as_invalid(logits, valid_actions)
-        return torch.nn.functional.log_softmax(logits_valid, dim=0)
+        return torch.nn.functional.log_softmax(logits_valid, dim=1)
 
     def log_sum_softmax_loss(self, optimal_actions: List[int],
                              logits: torch.Tensor,
@@ -221,7 +219,7 @@ class Transducer(torch.nn.Module):
         """Compute log loss similar to Riezler et al 2000."""
         logits_valid = self.mark_as_invalid(logits, valid_actions)
         log_sum_selected_terms = torch.logsumexp(
-            logits_valid[optimal_actions],
+            logits_valid[:, optimal_actions],
             dim=0,
         )
         enumerated_dim = tuple(range(logits_valid.dim()))
@@ -249,7 +247,7 @@ class Transducer(torch.nn.Module):
         decoder = self.h0_c0
 
         alignment = 0
-        action_history: List[int] = [torch.IntTensor([BEGIN_WORD])]
+        action_history: List[torch.IntTensor] = [torch.IntTensor([BEGIN_WORD])]
         output: List[str] = []
         losses: List[torch.Tensor] = []
         log_p = 0.
@@ -260,7 +258,7 @@ class Transducer(torch.nn.Module):
             valid_actions = self.compute_valid_actions(length_encoder_suffix)
 
             input_char_embedding = bidirectional_emb[alignment]
-            previous_action_embedding = self.act_lookup(action_history[-1])
+            previous_action_embedding = self.act_lookup(torch.tensor([action_history[-1]]))
             decoder_input = torch.cat(
                 (input_char_embedding, previous_action_embedding),
                 dim=1,
@@ -271,7 +269,7 @@ class Transducer(torch.nn.Module):
             logits = self.W(decoder_output)
             log_probs = self.log_softmax(logits, valid_actions)
 
-            log_probs_np = log_probs.npvalue()
+            log_probs_np = log_probs.squeeze().cpu().detach().numpy()
 
             if target is None:
                 # argmax decoding
@@ -317,22 +315,27 @@ class Transducer(torch.nn.Module):
                 output.append(action.new)
             elif isinstance(action, EndOfSequence):
                 break
+            elif isinstance(action, BeginOfSequence):
+                continue
             else:
                 raise ValueError(f"Unknown action: {action}.")
 
         return Output(action_history, "".join(output), log_p, losses)
 
     def beam_search_decode(self, input_: str, encoded_input: List[int],
-                           beam_width: int, external_cg: bool = True):
+                           beam_width: int):
+        """Runs the transducer with beam search.
 
-        if not external_cg:
-            dy.renew_cg()
-
+        Args:
+            input_: Input string.
+            encoded_input: List of integer character codes.
+            beam_width: Width of the beam search.
+        """
         input_emb = self.input_embedding(encoded_input, is_training=False)
         bidirectional_emb = \
             self.bidirectional_encoding(input_emb)[1:]  # drop BEGIN_WORD
         input_length = len(bidirectional_emb)
-        decoder = self.dec.initial_state()
+        decoder = self.h0_c0
 
         beam: List[Hypothesis] = [
             Hypothesis(action_history=[BEGIN_WORD],
@@ -354,20 +357,23 @@ class Transducer(torch.nn.Module):
                 valid_actions = self.compute_valid_actions(
                     length_encoder_suffix)
                 # decoder
-                decoder_input = dy.concatenate([
+                decoder_input = torch.cat([
                     bidirectional_emb[hypothesis.alignment],
                     self.act_lookup[hypothesis.action_history[-1]]
-                ])
-                decoder = hypothesis.decoder.add_input(decoder_input)
-                # classifier
-                logits = self.pW * decoder.output() + self.pb
-                log_probs_expr = dy.log_softmax(logits, valid_actions)
-                log_probs = log_probs_expr.npvalue()
+                ], dim=1,
+                ).unsqueeze(1)
+                decoder_output_, decoder = self.dec(decoder_input, decoder)
+
+                decoder_output = decoder_output_.squeeze(1)
+                logits = self.W(decoder_output)
+                log_probs = self.log_softmax(logits, valid_actions)
+
+                log_probs_np = log_probs.cpu().detach().numpy()
 
                 for action in valid_actions:
 
                     log_p = hypothesis.negative_log_p - \
-                            log_probs[action]  # min heap, so minus
+                            log_probs_np[action]  # min heap, so minus
 
                     heapq.heappush(expansions,
                                    Expansion(action, decoder,
