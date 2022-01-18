@@ -1,18 +1,42 @@
 """Utility functions and classes."""
-from typing import Any, Dict, List, Optional, TextIO
+from typing import Any, Dict, List, Optional, TextIO, Union
 import dataclasses
 import logging
 import os
 import time
 import re
 import unicodedata
+import torch
 
 
 @dataclasses.dataclass
 class Sample:
     input: str
     target: Optional[str]
-    encoded_input: Optional[List[int]] = None
+    encoded_input: Optional[Union[List[int], List[torch.Tensor]]] = None
+
+
+class Dataset(torch.utils.data.Dataset):
+    def __init__(self, samples: Optional[List[Sample]] = None):
+        self.samples = samples if samples else []
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, id_) -> Sample:
+        return self.samples[id_]
+
+    def add_samples(self, samples: Union[List[Sample], Sample]):
+        if isinstance(samples, list):
+            self.samples.extend(samples)
+        else:
+            self.samples.append(samples)
+
+    def get_data_loader(self, **kwargs):
+        if not 'collate_fn' in kwargs:
+            kwargs['collate_fn'] = lambda b: b
+
+        return torch.utils.data.DataLoader(self, **kwargs)
 
 
 @dataclasses.dataclass

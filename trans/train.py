@@ -1,16 +1,15 @@
 """Trains a grapheme-to-phoneme neural transducer."""
-from typing import List
+from typing import List, Optional, Union
 
 import argparse
 import logging
-import math
 import os
 import random
 import sys
 
 import progressbar
 
-import dynet as dy
+import torch
 import numpy as np
 
 from trans import optimal_expert_substitutions
@@ -23,7 +22,7 @@ from trans import vocabulary
 random.seed(1)
 
 
-def decode(transducer_: transducer.Transducer, data: List[utils.Sample],
+def decode(transducer_: transducer.Transducer, data_loader: torch.utils.data.DataLoader,
            beam_width: int = 1) -> utils.DecodingOutput:
     if beam_width == 1:
         decoding = lambda s: \
@@ -36,21 +35,21 @@ def decode(transducer_: transducer.Transducer, data: List[utils.Sample],
     loss = 0
     correct = 0
     j = 0
-    for j, sample in enumerate(data):
-        if j % 20 == 0:
-            dy.renew_cg()
-        output = decoding(sample)
-        prediction = output.output
-        predictions.append(f"{sample.input}\t{prediction}")
-        if prediction == sample.target:
-            correct += 1
-        loss += output.log_p / (len(output.action_history) - 1)
-        if j > 0 and j % 500 == 0:
-            logging.info("\t\t...%d samples", j)
+    for batch in data_loader:
+        for sample in batch:
+            output = decoding(sample)
+            prediction = output.output
+            predictions.append(f"{sample.input}\t{prediction}")
+            if prediction == sample.target:
+                correct += 1
+            loss += output.log_p / (len(output.action_history) - 1)
+            if j > 0 and j % 500 == 0:
+                logging.info("\t\t...%d samples", j)
+            j += 1
     logging.info("\t\t...%d samples", j + 1)
 
-    return utils.DecodingOutput(accuracy=correct / len(data),
-                                loss=- loss / len(data),
+    return utils.DecodingOutput(accuracy=correct / len(data_loader),
+                                loss=-loss / len(data_loader),
                                 predictions=predictions)
 
 
@@ -74,14 +73,15 @@ def main(args: argparse.Namespace):
 
     vocabulary_ = vocabulary.Vocabularies()
 
-    training_data = []
+    training_data = utils.Dataset()
     with utils.OpenNormalize(args.train, args.nfd) as f:
         for line in f:
             input_, target = line.rstrip().split("\t", 1)
             encoded_input = vocabulary_.encode_input(input_)
             vocabulary_.encode_actions(target)
             sample = utils.Sample(input_, target, encoded_input)
-            training_data.append(sample)
+            training_data.add_samples(sample)
+    training_data_loader = training_data.get_data_loader(batch_size=args.batch_size)
 
     logging.info("%d actions: %s", len(vocabulary_.actions),
                  vocabulary_.actions)
@@ -91,32 +91,33 @@ def main(args: argparse.Namespace):
     vocabulary_.persist(vocabulary_path)
     logging.info("Wrote vocabulary to %s.", vocabulary_path)
 
-    development_data = []
+    development_data = utils.Dataset()
     with utils.OpenNormalize(args.dev, args.nfd) as f:
         for line in f:
             input_, target = line.rstrip().split("\t", 1)
             encoded_input = vocabulary_.encode_unseen_input(input_)
             sample = utils.Sample(input_, target, encoded_input)
-            development_data.append(sample)
+            development_data.add_samples(sample)
+    development_data_loader = development_data.get_data_loader()
 
     if args.test is not None:
-        test_data = []
+        test_data = utils.Dataset()
         with utils.OpenNormalize(args.test, args.nfd) as f:
             for line in f:
                 input_, *optional_target = line.rstrip().split("\t", 1)
                 target = optional_target[0] if optional_target else None
                 encoded_input = vocabulary_.encode_unseen_input(input_)
                 sample = utils.Sample(input_, target, encoded_input)
-                test_data.append(sample)
+                test_data.add_samples(sample)
+        test_data_loader = test_data.get_data_loader()
 
     sed_parameters_path = os.path.join(args.output, "sed.pkl")
     sed_aligner = sed.StochasticEditDistance.fit_from_data(
-        training_data, em_iterations=args.sed_em_iterations,
+        training_data.samples, em_iterations=args.sed_em_iterations,
         output_path=sed_parameters_path)
     expert = optimal_expert_substitutions.OptimalSubstitutionExpert(sed_aligner)
 
-    model = dy.Model()
-    transducer_ = transducer.Transducer(model, vocabulary_, expert, **dargs)
+    transducer_ = transducer.Transducer(vocabulary_, expert, **dargs)  # removed model
 
     widgets = [progressbar.Bar(">"), " ", progressbar.ETA()]
     train_progress_bar = progressbar.ProgressBar(
@@ -128,16 +129,14 @@ def main(args: argparse.Namespace):
     with open(train_log_path, "w") as w:
         w.write("epoch\tavg_loss\ttrain_accuracy\tdev_accuracy\n")
 
-    trainer = dy.AdadeltaTrainer(model)
-    train_subset = training_data[:100]
+    optimizer = torch.optim.Adadelta(transducer_.parameters()) # TODO: optimizier params?
+    train_subset_loader = utils.Dataset(training_data.samples[:100]).get_data_loader()
     rollin_schedule = inverse_sigmoid_schedule(args.k)
     max_patience = args.patience
-    batch_size = args.batch_size
 
     logging.info("Training for a maximum of %d with a maximum patience of %d.",
                  args.epochs, max_patience)
-    logging.info("Number of train batches: %d.",
-                 math.ceil(len(training_data) / batch_size))
+    logging.info("Number of train batches: %d.", len(training_data_loader))
 
     best_train_accuracy = 0
     best_dev_accuracy = 0
@@ -147,57 +146,57 @@ def main(args: argparse.Namespace):
     for epoch in range(args.epochs):
 
         logging.info("Training...")
+        transducer_.train()
         with utils.Timer():
             train_loss = 0.
-            random.shuffle(training_data)
-            batches = [training_data[i:i + batch_size]
-                       for i in range(0, len(training_data), batch_size)]
             rollin = rollin_schedule(epoch)
             j = 0
-            for j, batch in enumerate(batches):
+            for j, batch in enumerate(training_data_loader):
                 losses = []
-                dy.renew_cg()
+                transducer_.zero_grad()
                 for sample in batch:
                     output = transducer_.transduce(
                         input_=sample.input,
                         encoded_input=sample.encoded_input,
                         target=sample.target,
                         rollin=rollin,
-                        external_cg=True,
                     )
-                    losses.extend(output.losses)
-                batch_loss = -dy.average(losses)
-                train_loss += batch_loss.scalar_value()
+                    # split losses --> optimize for all optimal actions
+                    losses.extend([s for loss in output.losses for s in torch.split(loss, 1)])
+                batch_loss = -torch.mean(torch.stack(losses))
+                train_loss += batch_loss.item()
                 batch_loss.backward()
-                trainer.update()
+                optimizer.step()
                 if j > 0 and j % 100 == 0:
                     logging.info("\t\t...%d batches", j)
             logging.info("\t\t...%d batches", j + 1)
 
-        avg_loss = train_loss / len(batches)
+        avg_loss = train_loss / len(training_data_loader)
         logging.info("Average train loss: %.4f.", avg_loss)
 
-        logging.info("Evaluating on training data subset...")
-        with utils.Timer():
-            train_accuracy = decode(transducer_, train_subset).accuracy
+        transducer_.eval()
+        with torch.no_grad():
+            logging.info("Evaluating on training data subset...")
+            with utils.Timer():
+                train_accuracy = decode(transducer_, train_subset_loader).accuracy
 
-        if train_accuracy > best_train_accuracy:
-            best_train_accuracy = train_accuracy
+            if train_accuracy > best_train_accuracy:
+                best_train_accuracy = train_accuracy
 
-        patience += 1
+            patience += 1
 
-        logging.info("Evaluating on development data...")
-        with utils.Timer():
-            decoding_output = decode(transducer_, development_data)
-            dev_accuracy = decoding_output.accuracy
-            avg_dev_loss = decoding_output.loss
+            logging.info("Evaluating on development data...")
+            with utils.Timer():
+                decoding_output = decode(transducer_, development_data_loader)
+                dev_accuracy = decoding_output.accuracy
+                avg_dev_loss = decoding_output.loss
 
         if dev_accuracy > best_dev_accuracy:
             best_dev_accuracy = dev_accuracy
             best_epoch = epoch
             patience = 0
             logging.info("Found best dev accuracy %.4f.", best_dev_accuracy)
-            model.save(best_model_path)
+            torch.save(transducer_.state_dict(), best_model_path)
             logging.info("Saved new best model to %s.", best_model_path)
 
         logging.info(
@@ -224,28 +223,29 @@ def main(args: argparse.Namespace):
     if not os.path.exists(best_model_path):
         sys.exit(0)
 
-    model = dy.Model()
-    transducer_ = transducer.Transducer(model, vocabulary_, expert, **dargs)
-    model.populate(best_model_path)
+    transducer_ = transducer.Transducer(vocabulary_, expert, **dargs)
+    transducer_.load_state_dict(torch.load(best_model_path))
 
-    evaluations = [(development_data, "dev")]
-    if args.test is not None:
-        evaluations.append((test_data, "test"))
-    for data, dataset_name in evaluations:
+    transducer_.eval()
+    with torch.no_grad():
+        evaluations = [(development_data_loader, "dev")]
+        if args.test is not None:
+            evaluations.append((test_data_loader, "test"))
+        for data, dataset_name in evaluations:
 
-        logging.info("Evaluating best model on %s data using beam search "
-                     "(beam width %d)...", dataset_name, args.beam_width)
-        with utils.Timer():
-            greedy_decoding = decode(transducer_, data)
-        utils.write_results(greedy_decoding.accuracy,
-                            greedy_decoding.predictions, args.output,
-                            args.nfd, dataset_name, dargs=dargs)
-        with utils.Timer():
-            beam_decoding = decode(transducer_, data, args.beam_width)
-        utils.write_results(beam_decoding.accuracy,
-                            beam_decoding.predictions, args.output,
-                            args.nfd, dataset_name, args.beam_width,
-                            dargs=dargs)
+            logging.info("Evaluating best model on %s data using beam search "
+                         "(beam width %d)...", dataset_name, args.beam_width)
+            with utils.Timer():
+                greedy_decoding = decode(transducer_, data)
+            utils.write_results(greedy_decoding.accuracy,
+                                greedy_decoding.predictions, args.output,
+                                args.nfd, dataset_name, dargs=dargs)
+            with utils.Timer():
+                beam_decoding = decode(transducer_, data, args.beam_width)
+            utils.write_results(beam_decoding.accuracy,
+                                beam_decoding.predictions, args.output,
+                                args.nfd, dataset_name, args.beam_width,
+                                dargs=dargs)
 
 
 if __name__ == "__main__":
@@ -255,12 +255,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train a g2p neural transducer.")
 
-    parser.add_argument("--dynet-seed", type=int, required=True,
-                        help="DyNET random seed.")
-    parser.add_argument("--dynet-mem", type=int, default=1000,
-                        help="Allocate MEM MB to DyNET.")
-    parser.add_argument("--dynet-autobatch", type=int,
-                        help="Perform automatic minibatching.")
+    '''parser.add_argument("--dynet-seed", type=int, required=True,
+                        help="DyNET random seed.")''' # TODO: how to replace if at all?
     parser.add_argument("--train", type=str, required=True,
                         help="Path to train set data.")
     parser.add_argument("--dev", type=str, required=True,
@@ -295,6 +291,8 @@ if __name__ == "__main__":
                         help="Batch size.")
     parser.add_argument("--sed-em-iterations", type=int, default=10,
                         help="SED EM iterations.")
+    parser.add_argument("--device", type=str, default='cpu',
+                        help="Device to run training on.")
 
     args = parser.parse_args()
     main(args)
