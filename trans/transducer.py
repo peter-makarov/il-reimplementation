@@ -332,8 +332,8 @@ class Transducer(torch.nn.Module):
             beam_width: Width of the beam search.
         """
         input_emb = self.input_embedding(encoded_input, is_training=False)
-        bidirectional_emb = \
-            self.bidirectional_encoding(input_emb)[1:]  # drop BEGIN_WORD
+        bidirectional_emb_, _ = self.enc(input_emb)
+        bidirectional_emb = bidirectional_emb_[1:]
         input_length = len(bidirectional_emb)
         decoder = self.h0_c0
 
@@ -359,7 +359,7 @@ class Transducer(torch.nn.Module):
                 # decoder
                 decoder_input = torch.cat([
                     bidirectional_emb[hypothesis.alignment],
-                    self.act_lookup[hypothesis.action_history[-1]]
+                    self.act_lookup(torch.tensor([hypothesis.action_history[-1]]))
                 ], dim=1,
                 ).unsqueeze(1)
                 decoder_output_, decoder = self.dec(decoder_input, decoder)
@@ -368,7 +368,7 @@ class Transducer(torch.nn.Module):
                 logits = self.W(decoder_output)
                 log_probs = self.log_softmax(logits, valid_actions)
 
-                log_probs_np = log_probs.cpu().detach().numpy()
+                log_probs_np = log_probs.squeeze().cpu().detach().numpy()
 
                 for action in valid_actions:
 
