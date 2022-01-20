@@ -354,26 +354,23 @@ class Transducer(torch.nn.Module):
             for hypothesis in beam:
 
                 length_encoder_suffix = input_length - hypothesis.alignment
-                valid_actions = self.compute_valid_actions(
-                    length_encoder_suffix)
+                valid_actions = self.compute_valid_actions(length_encoder_suffix)
                 # decoder
                 decoder_input = torch.cat([
                     bidirectional_emb[hypothesis.alignment],
                     self.act_lookup(torch.tensor([hypothesis.action_history[-1]]))
                 ], dim=1,
                 ).unsqueeze(1)
-                decoder_output_, decoder = self.dec(decoder_input, decoder)
+                decoder_output_, decoder = self.dec(decoder_input, hypothesis.decoder)
 
                 decoder_output = decoder_output_.squeeze(1)
                 logits = self.W(decoder_output)
                 log_probs = self.log_softmax(logits, valid_actions)
 
-                log_probs_np = log_probs.squeeze().cpu().detach().numpy()
-
                 for action in valid_actions:
 
                     log_p = hypothesis.negative_log_p - \
-                            log_probs_np[action]  # min heap, so minus
+                            log_probs[0, action]  # min heap, so minus
 
                     heapq.heappush(expansions,
                                    Expansion(action, decoder,
