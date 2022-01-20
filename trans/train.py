@@ -46,10 +46,10 @@ def decode(transducer_: transducer.Transducer, data_loader: torch.utils.data.Dat
             if j > 0 and j % 500 == 0:
                 logging.info("\t\t...%d samples", j)
             j += 1
-    logging.info("\t\t...%d samples", j + 1)
+    logging.info("\t\t...%d samples", j)
 
-    return utils.DecodingOutput(accuracy=correct / len(data_loader),
-                                loss=-loss / len(data_loader),
+    return utils.DecodingOutput(accuracy=correct / len(data_loader.dataset),
+                                loss=-loss / len(data_loader.dataset),
                                 predictions=predictions)
 
 
@@ -129,7 +129,7 @@ def main(args: argparse.Namespace):
     with open(train_log_path, "w") as w:
         w.write("epoch\tavg_loss\ttrain_accuracy\tdev_accuracy\n")
 
-    optimizer = torch.optim.Adadelta(transducer_.parameters()) # TODO: optimizier params?
+    optimizer = torch.optim.Adadelta(transducer_.parameters())
     train_subset_loader = utils.Dataset(training_data.samples[:100]).get_data_loader()
     rollin_schedule = inverse_sigmoid_schedule(args.k)
     max_patience = args.patience
@@ -236,16 +236,18 @@ def main(args: argparse.Namespace):
             logging.info("Evaluating best model on %s data using beam search "
                          "(beam width %d)...", dataset_name, args.beam_width)
             with utils.Timer():
-                greedy_decoding = decode(transducer_, data)
-            utils.write_results(greedy_decoding.accuracy,
-                                greedy_decoding.predictions, args.output,
-                                args.nfd, dataset_name, dargs=dargs)
-            with utils.Timer():
                 beam_decoding = decode(transducer_, data, args.beam_width)
             utils.write_results(beam_decoding.accuracy,
                                 beam_decoding.predictions, args.output,
                                 args.nfd, dataset_name, args.beam_width,
                                 dargs=dargs)
+            logging.info("Evaluating best model on %s data using greedy decoding"
+                         , dataset_name)
+            with utils.Timer():
+                greedy_decoding = decode(transducer_, data)
+            utils.write_results(greedy_decoding.accuracy,
+                                greedy_decoding.predictions, args.output,
+                                args.nfd, dataset_name, dargs=dargs)
 
 
 if __name__ == "__main__":
