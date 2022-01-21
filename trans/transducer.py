@@ -359,8 +359,8 @@ class Transducer(torch.nn.Module):
                 # decoder
                 decoder_input = torch.cat([
                     bidirectional_emb[hypothesis.alignment],
-                    self.act_lookup(torch.tensor([hypothesis.action_history[-1]]),
-                                    device=self.device)
+                    self.act_lookup(torch.tensor([hypothesis.action_history[-1]],
+                                                 device=self.device))
                 ], dim=1,
                 ).unsqueeze(1)
                 decoder_output_, decoder = self.dec(decoder_input, hypothesis.decoder)
