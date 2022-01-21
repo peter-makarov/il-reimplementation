@@ -258,7 +258,8 @@ class Transducer(torch.nn.Module):
             valid_actions = self.compute_valid_actions(length_encoder_suffix)
 
             input_char_embedding = bidirectional_emb[alignment]
-            previous_action_embedding = self.act_lookup(torch.tensor([action_history[-1]]))
+            previous_action_embedding = self.act_lookup(torch.tensor([action_history[-1]],
+                                                                     device=self.device))
             decoder_input = torch.cat(
                 (input_char_embedding, previous_action_embedding),
                 dim=1,
@@ -358,7 +359,8 @@ class Transducer(torch.nn.Module):
                 # decoder
                 decoder_input = torch.cat([
                     bidirectional_emb[hypothesis.alignment],
-                    self.act_lookup(torch.tensor([hypothesis.action_history[-1]]))
+                    self.act_lookup(torch.tensor([hypothesis.action_history[-1]]),
+                                    device=self.device)
                 ], dim=1,
                 ).unsqueeze(1)
                 decoder_output_, decoder = self.dec(decoder_input, hypothesis.decoder)
