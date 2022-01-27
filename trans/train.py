@@ -17,6 +17,7 @@ from trans import sed
 from trans import transducer
 from trans import utils
 from trans import vocabulary
+from trans.encoders import ENCODER_MAPPING
 
 
 random.seed(1)
@@ -117,7 +118,7 @@ def main(args: argparse.Namespace):
         output_path=sed_parameters_path)
     expert = optimal_expert_substitutions.OptimalSubstitutionExpert(sed_aligner)
 
-    transducer_ = transducer.Transducer(vocabulary_, expert, **dargs)  # removed model
+    transducer_ = transducer.Transducer(vocabulary_, expert, dargs)
 
     widgets = [progressbar.Bar(">"), " ", progressbar.ETA()]
     train_progress_bar = progressbar.ProgressBar(
@@ -223,7 +224,7 @@ def main(args: argparse.Namespace):
     if not os.path.exists(best_model_path):
         sys.exit(0)
 
-    transducer_ = transducer.Transducer(vocabulary_, expert, **dargs)
+    transducer_ = transducer.Transducer(vocabulary_, expert, dargs)
     transducer_.load_state_dict(torch.load(best_model_path))
 
     transducer_.eval()
@@ -257,8 +258,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train a g2p neural transducer.")
 
-    '''parser.add_argument("--dynet-seed", type=int, required=True,
-                        help="DyNET random seed.")''' # TODO: how to replace if at all?
     parser.add_argument("--train", type=str, required=True,
                         help="Path to train set data.")
     parser.add_argument("--dev", type=str, required=True,
@@ -273,12 +272,11 @@ if __name__ == "__main__":
                         help="Character peak_embedding dimension.")
     parser.add_argument("--action-dim", type=int, default=100,
                         help="Action peak_embedding dimension.")
-    parser.add_argument("--enc-hidden-dim", type=int, default=200,
-                        help="Encoder LSTM state dimension.")
+    parser.add_argument("--enc-type", type=str, default='lstm',
+                        choices=["lstm", "transformer"],
+                        help="Type of used encoder.")
     parser.add_argument("--dec-hidden-dim", type=int, default=200,
                         help="Decoder LSTM state dimension.")
-    parser.add_argument("--enc-layers", type=int, default=1,
-                        help="Number of encoder LSTM layers.")
     parser.add_argument("--dec-layers", type=int, default=1,
                         help="Number of decoder LSTM layers.")
     parser.add_argument("--beam-width", type=int, default=4,
@@ -295,6 +293,12 @@ if __name__ == "__main__":
                         help="SED EM iterations.")
     parser.add_argument("--device", type=str, default='cpu',
                         help="Device to run training on.")
+
+    args, _ = parser.parse_known_args()
+
+    # encoder-specific configs
+    encoder_group = parser.add_argument_group("Encoder specific configuration")
+    ENCODER_MAPPING[args.enc_type].add_args(encoder_group)
 
     args = parser.parse_args()
     main(args)

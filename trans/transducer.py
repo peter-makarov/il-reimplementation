@@ -12,6 +12,7 @@ from trans import vocabulary
 from trans.actions import ConditionalCopy, ConditionalDel, ConditionalIns, \
     ConditionalSub, Edit, EndOfSequence, GenerativeEdit, BeginOfSequence
 from trans.vocabulary import BEGIN_WORD, COPY, DELETE, END_WORD
+from trans import encoders
 
 
 MAX_ACTION_SEQ_LEN = 150
@@ -58,12 +59,10 @@ class Expansion:
 
 class Transducer(torch.nn.Module):
     def __init__(self, vocab: vocabulary.Vocabularies,
-                 expert: optimal_expert.Expert, char_dim: int, action_dim: int,
-                 enc_hidden_dim: int, enc_layers: int, dec_hidden_dim: int,
-                 dec_layers: int, device: str = 'cpu', **kwargs):
+                 expert: optimal_expert.Expert, dargs: dict):
 
         super().__init__()
-        self.device = torch.device(device)
+        self.device = torch.device(dargs['device'])
 
         self.vocab = vocab
         self.optimal_expert = expert
@@ -76,42 +75,35 @@ class Transducer(torch.nn.Module):
         # encoder
         self.char_lookup = torch.nn.Embedding(
             num_embeddings=self.number_characters,
-            embedding_dim=char_dim,
+            embedding_dim=dargs['char_dim'],
             device=self.device,
         )
-
-        self.enc = torch.nn.LSTM(
-            input_size=char_dim,
-            hidden_size=enc_hidden_dim,
-            num_layers=enc_layers,
-            bidirectional=True,
-            device=self.device,
-        )
+        self.enc = encoders.ENCODER_MAPPING[dargs['enc_type']](dargs)
 
         # decoder
         self.act_lookup = torch.nn.Embedding(
             num_embeddings=self.number_actions,
-            embedding_dim=action_dim,
+            embedding_dim=dargs['action_dim'],
             device=self.device,
         )
 
-        decoder_input_dim = enc_hidden_dim * 2 + action_dim
+        decoder_input_dim = self.enc.output_size + dargs['action_dim']
 
         self.dec = torch.nn.LSTM(
             input_size=decoder_input_dim,
-            hidden_size=dec_hidden_dim,
-            num_layers=dec_layers,
+            hidden_size=dargs['dec_hidden_dim'],
+            num_layers=dargs['dec_layers'],
             device=self.device,
         )
 
         self.h0_c0 = (  # batch size 1
-            torch.zeros((dec_layers, 1, dec_hidden_dim), device=self.device),
-            torch.zeros((dec_layers, 1, dec_hidden_dim), device=self.device),
+            torch.zeros((dargs['dec_layers'], 1, dargs['dec_hidden_dim']), device=self.device),
+            torch.zeros((dargs['dec_layers'], 1, dargs['dec_hidden_dim']), device=self.device),
         )
 
         # classifier
         self.W = torch.nn.Linear(
-            in_features=dec_hidden_dim,
+            in_features=dargs['dec_hidden_dim'],
             out_features=self.number_actions,
             device=self.device,
 
