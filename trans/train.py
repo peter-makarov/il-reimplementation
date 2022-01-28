@@ -287,7 +287,7 @@ if __name__ == "__main__":
                         help="Maximal patience for early stopping.")
     parser.add_argument("--epochs", type=int, default=60,
                         help="Maximal number of training epochs.")
-    parser.add_argument("--batch-size", type=str, default=5,
+    parser.add_argument("--batch-size", type=int, default=5,
                         help="Batch size.")
     parser.add_argument("--sed-em-iterations", type=int, default=10,
                         help="SED EM iterations.")
