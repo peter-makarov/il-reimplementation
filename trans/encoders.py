@@ -35,7 +35,7 @@ class LSTMEncoder(torch.nn.LSTM):
 class TransformerEncoder(torch.nn.Module):
     def __init__(self, dargs: dict):
         super().__init__()
-        self.output_size = dargs['char_dim']
+        self.d_model = dargs['char_dim']
         self.pos_encoding = PositionalEncoding(
             d_model=dargs['char_dim']
         )
@@ -51,16 +51,20 @@ class TransformerEncoder(torch.nn.Module):
         )
 
     def forward(self, src, mask=None, src_key_padding_mask=None):
-        pos_encoded = self.pos_encoding(src)
-        return self.transformer_encoder(pos_encoded, mask, src_key_padding_mask), 0
+        pos_encoded = self.pos_encoding(src * math.sqrt(self.d_model))
+        return self.transformer_encoder(pos_encoded, mask, src_key_padding_mask), None
+
+    @property
+    def output_size(self):
+        return self.d_model
 
     @staticmethod
     def add_args(parser) -> None:
-        parser.add_argument("--enc-layers", type=int, default=2,
+        parser.add_argument("--enc-layers", type=int, default=4,
                             help="Number of Transformer encoder layers.")
-        parser.add_argument("--enc-nhead", type=int, default=2,
+        parser.add_argument("--enc-nhead", type=int, default=4,
                             help="Number of Transformer heads.")
-        parser.add_argument("--enc-dim-feedforward", type=int, default=100,
+        parser.add_argument("--enc-dim-feedforward", type=int, default=1024,
                             help="Number of Transformer heads.")
 
 
