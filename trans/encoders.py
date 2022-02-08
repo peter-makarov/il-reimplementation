@@ -42,7 +42,8 @@ class TransformerEncoder(torch.nn.Module):
         super().__init__()
         self.d_model = dargs['char_dim']
         self.pos_encoding = PositionalEncoding(
-            d_model=dargs['char_dim']
+            d_model=dargs['char_dim'],
+            dropout=dargs['enc_dropout']
         )
         self.encoder_layers = torch.nn.TransformerEncoderLayer(
             d_model=dargs['char_dim'],
