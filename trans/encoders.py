@@ -15,6 +15,7 @@ class LSTMEncoder(torch.nn.LSTM):
             hidden_size=dargs['enc_hidden_dim'],
             num_layers=dargs['enc_layers'],
             bidirectional=dargs['enc_bidirectional'],
+            dropout=dargs['enc_dropout'],
             device=dargs['device']
         )
 
@@ -26,6 +27,10 @@ class LSTMEncoder(torch.nn.LSTM):
                             help="Number of encoder LSTM layers.")
         parser.add_argument("--enc-bidirectional", type=bool, default=True,
                             help="If LSTM is bidirectional.")
+        parser.add_argument("--enc-dropout", type=float, default=0.,
+                            help="Dropout probability after each LSTM layer"
+                                 "(except the last layer).")
+
 
     @property
     def output_size(self):
@@ -43,6 +48,7 @@ class TransformerEncoder(torch.nn.Module):
             d_model=dargs['char_dim'],
             nhead=dargs['enc_nhead'],
             dim_feedforward=dargs['enc_dim_feedforward'],
+            dropout=dargs['enc_dropout'],
             device=dargs['device']
         )
         self.transformer_encoder = torch.nn.TransformerEncoder(
@@ -66,6 +72,8 @@ class TransformerEncoder(torch.nn.Module):
                             help="Number of Transformer heads.")
         parser.add_argument("--enc-dim-feedforward", type=int, default=1024,
                             help="Number of Transformer heads.")
+        parser.add_argument("--enc-dropout", type=float, default=0.1,
+                            help="Dropout probability.")
 
 
 class PositionalEncoding(torch.nn.Module):
