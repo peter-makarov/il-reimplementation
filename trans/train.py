@@ -17,7 +17,7 @@ from trans import sed
 from trans import transducer
 from trans import utils
 from trans import vocabulary
-from trans.encoders import ENCODER_MAPPING
+from trans import ENCODER_MAPPING, OPTIMIZER_MAPPING, LR_SCHEDULER_MAPPING
 
 
 random.seed(1)
@@ -66,6 +66,9 @@ def main(args: argparse.Namespace):
         logging.info("%s: %s", str(key).ljust(15), value)
 
     os.makedirs(args.output)
+
+    if args.pytorch_seed:
+        torch.manual_seed(args.pytorch_seed)
 
     if args.nfd:
         logging.info("Will perform training on NFD-normalized data.")
@@ -130,7 +133,10 @@ def main(args: argparse.Namespace):
     with open(train_log_path, "w") as w:
         w.write("epoch\tavg_loss\ttrain_accuracy\tdev_accuracy\n")
 
-    optimizer = torch.optim.Adadelta(transducer_.parameters())
+    optimizer = OPTIMIZER_MAPPING[args.optimizer](transducer_.parameters(), dargs)
+    scheduler = None
+    if args.scheduler:
+        scheduler = LR_SCHEDULER_MAPPING[args.scheduler](optimizer, dargs)
     train_subset_loader = utils.Dataset(training_data.samples[:100]).get_data_loader()
     rollin_schedule = inverse_sigmoid_schedule(args.k)
     max_patience = args.patience
@@ -168,6 +174,8 @@ def main(args: argparse.Namespace):
                 train_loss += batch_loss.item()
                 batch_loss.backward()
                 optimizer.step()
+                if scheduler:
+                    scheduler.step()
                 if j > 0 and j % 100 == 0:
                     logging.info("\t\t...%d batches", j)
             logging.info("\t\t...%d batches", j + 1)
@@ -258,6 +266,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Train a g2p neural transducer.")
 
+    parser.add_argument("--pytorch-seed", type=int,
+                        help="Random seed used by PyTorch.")
     parser.add_argument("--train", type=str, required=True,
                         help="Path to train set data.")
     parser.add_argument("--dev", type=str, required=True,
@@ -273,7 +283,7 @@ if __name__ == "__main__":
     parser.add_argument("--action-dim", type=int, default=100,
                         help="Action peak_embedding dimension.")
     parser.add_argument("--enc-type", type=str, default='lstm',
-                        choices=["lstm", "transformer"],
+                        choices=ENCODER_MAPPING.keys(),
                         help="Type of used encoder.")
     parser.add_argument("--dec-hidden-dim", type=int, default=200,
                         help="Decoder LSTM state dimension.")
@@ -289,6 +299,12 @@ if __name__ == "__main__":
                         help="Maximal number of training epochs.")
     parser.add_argument("--batch-size", type=int, default=5,
                         help="Batch size.")
+    parser.add_argument("--optimizer", type=str, default="adadelta",
+                        choices=OPTIMIZER_MAPPING.keys(),
+                        help="Optimizer used in training.")
+    parser.add_argument("--scheduler", type=str,
+                        choices=LR_SCHEDULER_MAPPING.keys(),
+                        help="Scheduler used in training.")
     parser.add_argument("--sed-em-iterations", type=int, default=10,
                         help="SED EM iterations.")
     parser.add_argument("--device", type=str, default='cpu',
@@ -299,6 +315,15 @@ if __name__ == "__main__":
     # encoder-specific configs
     encoder_group = parser.add_argument_group("Encoder specific configuration")
     ENCODER_MAPPING[args.enc_type].add_args(encoder_group)
+
+    # optimizer-specific configs
+    optimizer_group = parser.add_argument_group("Optimizer specific configuration")
+    OPTIMIZER_MAPPING[args.optimizer].add_args(optimizer_group)
+
+    # scheduler-specific configs
+    if args.scheduler:
+        scheduler_group = parser.add_argument_group("LR scheduler specific configuration")
+        LR_SCHEDULER_MAPPING[args.scheduler].add_args(scheduler_group)
 
     args = parser.parse_args()
     main(args)

@@ -1,13 +1,13 @@
 """Encoder classes used by the Transducer model."""
-
-from typing import Any, Dict, List, Optional, TextIO, Union
-import abc
+import argparse
 import math
+from trans import register_component
 
 
 import torch
 
 
+@register_component('lstm', 'encoder')
 class LSTMEncoder(torch.nn.LSTM):
     def __init__(self, dargs: dict):
         super().__init__(
@@ -20,7 +20,7 @@ class LSTMEncoder(torch.nn.LSTM):
         )
 
     @staticmethod
-    def add_args(parser) -> None:
+    def add_args(parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--enc-hidden-dim", type=int, default=200,
                             help="Encoder LSTM state dimension.")
         parser.add_argument("--enc-layers", type=int, default=1,
@@ -31,12 +31,12 @@ class LSTMEncoder(torch.nn.LSTM):
                             help="Dropout probability after each LSTM layer"
                                  "(except the last layer).")
 
-
     @property
     def output_size(self):
         return self.hidden_size * 2 if self.bidirectional else self.hidden_size
 
 
+@register_component('transformer', 'encoder')
 class TransformerEncoder(torch.nn.Module):
     def __init__(self, dargs: dict):
         super().__init__()
@@ -45,7 +45,7 @@ class TransformerEncoder(torch.nn.Module):
             d_model=dargs['char_dim'],
             dropout=dargs['enc_dropout']
         )
-        self.encoder_layers = torch.nn.TransformerEncoderLayer(
+        self.encoder_layer = torch.nn.TransformerEncoderLayer(
             d_model=dargs['char_dim'],
             nhead=dargs['enc_nhead'],
             dim_feedforward=dargs['enc_dim_feedforward'],
@@ -53,7 +53,7 @@ class TransformerEncoder(torch.nn.Module):
             device=dargs['device']
         )
         self.transformer_encoder = torch.nn.TransformerEncoder(
-            encoder_layer=self.encoder_layers,
+            encoder_layer=self.encoder_layer,
             num_layers=dargs['enc_layers']
         )
 
@@ -66,7 +66,7 @@ class TransformerEncoder(torch.nn.Module):
         return self.d_model
 
     @staticmethod
-    def add_args(parser) -> None:
+    def add_args(parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--enc-layers", type=int, default=4,
                             help="Number of Transformer encoder layers.")
         parser.add_argument("--enc-nhead", type=int, default=4,
@@ -96,9 +96,3 @@ class PositionalEncoding(torch.nn.Module):
         """
         x = x + self.pe[:x.size(0)]
         return self.dropout(x)
-
-
-ENCODER_MAPPING = {
-    'lstm': LSTMEncoder,
-    'transformer': TransformerEncoder,
-}

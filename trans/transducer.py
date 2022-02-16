@@ -12,7 +12,7 @@ from trans import vocabulary
 from trans.actions import ConditionalCopy, ConditionalDel, ConditionalIns, \
     ConditionalSub, Edit, EndOfSequence, GenerativeEdit, BeginOfSequence
 from trans.vocabulary import BEGIN_WORD, COPY, DELETE, END_WORD
-from trans import encoders
+from trans import ENCODER_MAPPING
 
 
 MAX_ACTION_SEQ_LEN = 150
@@ -78,7 +78,7 @@ class Transducer(torch.nn.Module):
             embedding_dim=dargs['char_dim'],
             device=self.device,
         )
-        self.enc = encoders.ENCODER_MAPPING[dargs['enc_type']](dargs)
+        self.enc = ENCODER_MAPPING[dargs['enc_type']](dargs)
 
         # decoder
         self.act_lookup = torch.nn.Embedding(
