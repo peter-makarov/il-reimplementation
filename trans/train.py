@@ -36,16 +36,16 @@ def decode(transducer_: transducer.Transducer, data_loader: torch.utils.data.Dat
     correct = 0
     j = 0
     for batch in data_loader:
-        for sample in batch:
-            output = decoding(sample)
-            prediction = output.output
-            predictions.append(f"{sample.input}\t{prediction}")
-            if prediction == sample.target:
+        output = decoding(batch)
+        inputs, targets = batch.input, batch.target
+        for i, p in enumerate(output.output):
+            predictions.append(f"{inputs[i]}\t{p}")
+            if p == targets[i]:
                 correct += 1
-            loss += output.log_p / (len(output.action_history) - 1)
-            if j > 0 and j % 500 == 0:
-                logging.info("\t\t...%d samples", j)
-            j += 1
+        loss += output.log_p
+        if j > 0 and j % 500 == 0:
+            logging.info("\t\t...%d samples", j)
+        j += 1
     logging.info("\t\t...%d samples", j)
 
     return utils.DecodingOutput(accuracy=correct / len(data_loader.dataset),
@@ -81,7 +81,6 @@ def main(args: argparse.Namespace):
             vocabulary_.encode_actions(target)
             sample = utils.Sample(input_, target, encoded_input)
             training_data.add_samples(sample)
-    training_data_loader = training_data.get_data_loader(batch_size=args.batch_size)
 
     logging.info("%d actions: %s", len(vocabulary_.actions),
                  vocabulary_.actions)
@@ -117,7 +116,23 @@ def main(args: argparse.Namespace):
         output_path=sed_parameters_path)
     expert = optimal_expert_substitutions.OptimalSubstitutionExpert(sed_aligner)
 
-    transducer_ = transducer.Transducer(vocabulary_, expert, **dargs)  # removed model
+    transducer_ = transducer.Transducer(vocabulary_, expert, **dargs)
+
+    # precompute optimal actions
+    for s in training_data.samples:
+        if not s.optimal_actions:
+            s.optimal_actions = []
+        alignment = 0
+        output = []
+        stop = False
+        while not stop and len(output) <= transducer.MAX_ACTION_SEQ_LEN:
+            actions = transducer_.expert_rollout(s.input, s.target, alignment, output)
+            # todo: allow optimization of multiple target actions
+            s.optimal_actions.append([actions[0]])
+            char_, alignment, stop = transducer_.decode_char(s.input, actions[0], alignment)
+            if char_ != "":
+                output.append(char_)
+    training_data_loader = training_data.get_data_loader(batch_size=args.batch_size)
 
     widgets = [progressbar.Bar(">"), " ", progressbar.ETA()]
     train_progress_bar = progressbar.ProgressBar(
@@ -152,25 +167,23 @@ def main(args: argparse.Namespace):
             rollin = rollin_schedule(epoch)
             j = 0
             for j, batch in enumerate(training_data_loader):
-                losses = []
-                transducer_.zero_grad()
-                for sample in batch:
-                    output = transducer_.transduce(
-                        input_=sample.input,
-                        encoded_input=sample.encoded_input,
-                        target=sample.target,
-                        rollin=rollin,
-                    )
-                    # split losses --> optimize for all optimal actions
-                    losses.extend([s for loss in output.losses for s in torch.split(loss, 1)])
-                batch_loss = -torch.mean(torch.stack(losses))
-                train_loss += batch_loss.item()
-                batch_loss.backward()
-                optimizer.step()
+                output = transducer_.transduce(
+                    input_=batch.input,
+                    encoded_input=batch.encoded_input,
+                    target=batch.target,
+                    optimal_actions=batch.optimal_actions,
+                    rollin=rollin,
+                )
+                train_loss += torch.mean(output.losses.squeeze(dim=0)).item()
+                output.losses.sum().backward()
+                if j % args.grad_accumulation == 0:
+                    optimizer.step()
+                    transducer_.zero_grad()
                 if j > 0 and j % 100 == 0:
                     logging.info("\t\t...%d batches", j)
             logging.info("\t\t...%d batches", j + 1)
 
+        # avg. loss per sample
         avg_loss = train_loss / len(training_data_loader)
         logging.info("Average train loss: %.4f.", avg_loss)
 
@@ -289,8 +302,10 @@ if __name__ == "__main__":
                         help="Maximal patience for early stopping.")
     parser.add_argument("--epochs", type=int, default=60,
                         help="Maximal number of training epochs.")
-    parser.add_argument("--batch-size", type=str, default=5,
+    parser.add_argument("--batch-size", type=int, default=5,
                         help="Batch size.")
+    parser.add_argument("--grad-accumulation", type=int, default=1,
+                        help="Gradient accumulation.")
     parser.add_argument("--sed-em-iterations", type=int, default=10,
                         help="SED EM iterations.")
     parser.add_argument("--device", type=str, default='cpu',

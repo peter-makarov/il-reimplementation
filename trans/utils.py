@@ -7,13 +7,36 @@ import time
 import re
 import unicodedata
 import torch
+from trans.vocabulary import PAD
 
 
 @dataclasses.dataclass
 class Sample:
     input: str
     target: Optional[str]
-    encoded_input: Optional[Union[List[int], List[torch.Tensor]]] = None
+    encoded_input: Optional[List[int]] = None
+    optimal_actions: Optional[List[int]] = None
+
+
+@dataclasses.dataclass
+class Samples:
+    samples: List[Sample]
+
+    @property
+    def input(self):
+        return [s.input for s in self.samples]
+
+    @property
+    def target(self):
+        return [s.target for s in self.samples]
+
+    @property
+    def encoded_input(self):
+        return [s.encoded_input for s in self.samples]
+
+    @property
+    def optimal_actions(self):
+        return [s.optimal_actions for s in self.samples]
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -33,8 +56,18 @@ class Dataset(torch.utils.data.Dataset):
             self.samples.append(samples)
 
     def get_data_loader(self, **kwargs):
-        if not 'collate_fn' in kwargs:
-            kwargs['collate_fn'] = lambda b: b
+        if 'collate_fn' not in kwargs:
+            if 'pad_index' not in kwargs:
+                pad_index = PAD
+
+            def collate(batch: List):
+                if len(batch) > 1:
+                    max_len = len(max(batch, key=lambda b: len(b.input)).encoded_input)
+                    for s in batch:
+                        s.encoded_input += [pad_index] * (max_len - len(s.encoded_input))
+                return Samples(batch)
+
+            kwargs['collate_fn'] = collate
 
         return torch.utils.data.DataLoader(self, **kwargs)
 
@@ -83,7 +116,6 @@ def write_results(accuracy: float, predictions: List[str], output: str,
                   normalize: bool, dataset_name: str, beam_width: int = 1,
                   decoding_name: Optional[str] = None,
                   dargs: Dict[str, Any] = None):
-
     logging.info("%s set accuracy: %.4f.", dataset_name.title(), accuracy)
 
     if decoding_name is None:
