@@ -389,6 +389,11 @@ class Transducer(torch.nn.Module):
             )
             alignment = alignment + self.alignment_update[actions.squeeze(dim=0)]
 
+        # adjust log_p
+        # --> return the token avg. of all seqs in the batch
+        true_action_lengths = action_history.size(2) - (action_history == PAD).sum(dim=2)
+        log_p = torch.mean(log_p.sum(dim=0) / true_action_lengths).item()
+
         # trim action history
         # --> first element is not considered (begin-of-sequence-token)
         # --> and only token up to the first end-of-sequence-token (including it)
@@ -396,7 +401,7 @@ class Transducer(torch.nn.Module):
                           for seq in action_history.squeeze(dim=0).tolist()]
 
         return Output(action_history, self.batch_decode(input_, action_history),
-                      torch.mean(log_p).item(), None)
+                      log_p, None)
 
     def batch_decode(self, input_: Union[List[str], List[List[str]]], encoded_output: List[List[int]]) -> List[str]:
         """Decode a list of encoded output sequences given their string input."""
