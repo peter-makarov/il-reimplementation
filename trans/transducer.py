@@ -14,6 +14,7 @@ from trans.actions import ConditionalCopy, ConditionalDel, ConditionalIns, \
 from trans.vocabulary import BEGIN_WORD, COPY, DELETE, END_WORD, PAD
 
 MAX_ACTION_SEQ_LEN = 150
+MAX_INPUT_SEQ_LEN = 100
 
 
 @functools.total_ordering
@@ -22,7 +23,7 @@ class Output:
     action_history: List[Any]
     output: Union[str, List[str]]
     log_p: float
-    losses: torch.Tensor = None
+    losses: Optional[torch.Tensor] = None
 
     def __lt__(self, other):
         return self.log_p < other.log_p
@@ -33,9 +34,9 @@ class Output:
 
 @dataclasses.dataclass
 class Hypothesis:
-    action_history: List[Any]
-    alignment: int
-    decoder: Tuple[torch.Tensor, torch.Tensor]
+    action_history: torch.tensor
+    alignment: torch.tensor
+    decoder: Tuple[torch.tensor, torch.tensor]
     negative_log_p: float
     output: List[str]
 
@@ -44,7 +45,7 @@ class Hypothesis:
 @dataclasses.dataclass
 class Expansion:
     action: Any
-    decoder: Tuple[torch.Tensor, torch.Tensor]
+    decoder: Tuple[torch.tensor, torch.tensor]
     from_hypothesis: Hypothesis
     negative_log_p: float
 
@@ -96,6 +97,7 @@ class Transducer(torch.nn.Module):
             num_embeddings=self.number_actions,
             embedding_dim=action_dim,
             device=self.device,
+            padding_idx=PAD
         )
 
         decoder_input_dim = enc_hidden_dim * 2 + action_dim
@@ -117,6 +119,20 @@ class Transducer(torch.nn.Module):
 
         )
 
+        # maps action index to alignment update
+        alignment_update = [0] * self.number_actions
+        for i, action in enumerate(self.vocab.actions.i2w):
+            if isinstance(action,
+                          (ConditionalCopy, ConditionalDel, ConditionalSub)):
+                alignment_update[i] = 1
+        self.alignment_update = torch.tensor(alignment_update, device=self.device)
+
+        # lookup for valid actions (given length of encoder suffix)
+        self.valid_actions_lookup = torch.stack(
+            [self.compute_valid_actions(i)
+             for i in range(MAX_INPUT_SEQ_LEN)],
+            dim=0).unsqueeze(dim=0)
+
     @property
     def h0_c0(self):
         return self._h0_c0
@@ -130,20 +146,15 @@ class Transducer(torch.nn.Module):
                 torch.zeros((self.dec_layers, batch_size, self.dec_hidden_dim), device=self.device),
             )
 
-    def input_embedding(self, input_: Union[List[int], List[List[int]]], is_training: bool):
+    def input_embedding(self, input_: torch.tensor, is_training: bool):
         """Returns a list of character embeddings for the input."""
-        input_tensor = torch.tensor(
-            input_,
-            dtype=torch.int,
-            device=self.device,
-        )
-        if input_tensor.dim() == 1:
-            input_tensor = input_tensor.unsqueeze(dim=0)
-        emb = self.char_lookup(input_tensor)
+        if input_.dim() == 1:
+            input_tensor = input_.unsqueeze(dim=0)
+        emb = self.char_lookup(input_)
 
         if not is_training:
 
-            unk_indices = input_tensor >= self.number_characters
+            unk_indices = input_ >= self.number_characters
             if unk_indices.sum().item() > 0:
                 # UNK is the average of trained embeddings (excluding UNK)
                 ids_tensor = torch.tensor(
@@ -229,16 +240,16 @@ class Transducer(torch.nn.Module):
         return torch.nn.functional.log_softmax(logits_valid, dim=2)
 
     def log_sum_softmax_loss(self, logits: torch.Tensor,
-                             optimal_actions: torch.Tensor,
-                             valid_actions: torch.Tensor) -> torch.Tensor:
+                             optimal_actions_mask: torch.Tensor,
+                             valid_actions_mask: torch.Tensor) -> torch.Tensor:
         """Compute log loss similar to Riezler et al 2000."""
-        logits_valid = self.mark_as_invalid(logits, valid_actions)
+        logits_valid = self.mark_as_invalid(logits, valid_actions_mask)
         # padding can be inferred from optimal actions
         # --> if mask only consists of False values
-        paddings = ~torch.any(optimal_actions, dim=2)
+        paddings = ~torch.any(optimal_actions_mask, dim=2)
         logits_valid[paddings] = -np.inf
         logits_optimal = logits_valid.clone()
-        logits_optimal[~(valid_actions*optimal_actions)] = -np.inf
+        logits_optimal[~(valid_actions_mask * optimal_actions_mask)] = -np.inf
 
         log_sum_selected_terms = torch.logsumexp(
             logits_optimal,
@@ -258,132 +269,117 @@ class Transducer(torch.nn.Module):
 
         return log_sum_selected_terms - normalization_term
 
-    def transduce(self, input_: List[List[str]], encoded_input: List[List[int]],
-                  target: List[str] = None, optimal_actions: List[List[List[int]]] = None,
-                  rollin: Optional[float] = None):
-        """Runs the transducer for dynamic-oracle training and greedy decoding.
+    def encoder_step(self, encoded_input: torch.tensor, is_training: bool = False) -> torch.tensor:
+        """Runs the encoder.
 
         Args:
-            input_: Input string.
-            encoded_input: List of integer character codes.
-            target: Target string during training, `None` during prediction.
-            optimal_actions: Optimal actions during training, `None` during prediction.
-            rollin: The probability with which an action sampled from the model
-                    is executed. Used during training."""
-        is_training = bool(target)
+            encoded_input: tensor of encoded input character codes
+            is_training: bool indicating whether model is in training or not.
 
+        Returns:
+            Encoder output."""
         input_emb = torch.transpose(self.input_embedding(encoded_input, is_training), 0, 1)
-        bidirectional_emb_, _ = self.enc(input_emb)  # L x B x E
-        bidirectional_emb = bidirectional_emb_[1:, :]  # drop BEGIN_WORD
-        batch_size = bidirectional_emb.size()[1]
+        bidirectional_emb, _ = self.enc(input_emb)  # L x B x E
+
+        return bidirectional_emb[1:]  # drop BEGIN_WORD
+
+    def decoder_step(self, encoder_output: torch.tensor,
+                     decoder_cell_state: torch.tensor,
+                     alignment: torch.tensor,
+                     action_history: torch.tensor) -> torch.tensor:
+        # build decoder input
+        batch_size = encoder_output.size(1)
+        input_char_embedding = encoder_output \
+            [alignment, torch.tensor([i for i in range(batch_size) for _ in range(len(alignment)//batch_size)],
+                                     device=self.device)].unsqueeze(dim=0)
+        input_char_embedding = torch.reshape(input_char_embedding, (batch_size, len(alignment)//batch_size, -1)).transpose(0, 1)
+        previous_action_embedding = self.act_lookup(action_history)
+
+        decoder_input = torch.cat(
+            (input_char_embedding, previous_action_embedding),
+            dim=2
+        )
+
+        # returns tuple of (hidden_state, cell_state)
+        return self.dec(decoder_input, decoder_cell_state)
+
+    def calculate_actions(self, decoder_output: torch.tensor, valid_actions_mask: torch.tensor)\
+            -> Tuple[torch.tensor, torch.tensor]:
+        logits = self.W(decoder_output)
+        log_probs = self.log_softmax(logits, valid_actions_mask)
+        actions = torch.argmax(log_probs, dim=2)
+
+        return actions, log_probs
+
+    def training_step(self, encoded_input: torch.tensor,
+                      action_history: torch.tensor,
+                      alignment_history: torch.tensor,
+                      optimal_actions_mask: torch.tensor,
+                      valid_actions_mask: torch.tensor,
+                      ) -> torch.tensor:
+        """Run a training step and return the respective loss for all sequences in the batch."""
+        batch_size = encoded_input.size()[0]
 
         # adjust initial decoder states if batch_size has changed
         self.h0_c0 = batch_size
+
+        # run encoder
+        bidirectional_emb = self.encoder_step(encoded_input, True)
+
+        # run decoder & classifier
+        decoder_output, _ = self.decoder_step(bidirectional_emb, self.h0_c0,
+                                              alignment_history, action_history)
+        logits = self.W(decoder_output)
+
+        # compute losses
+        # the loss for each seq in the batch is divided by the nr of non-padding elements
+        # --> loss per seq = avg. loss per token in seq
+        true_action_lengths = action_history.size(0) - (action_history == PAD).sum(dim=0)
+        losses = self.log_sum_softmax_loss(logits, optimal_actions_mask, valid_actions_mask)
+        losses = -losses.sum(dim=0) / true_action_lengths
+
+        return losses
+
+    def transduce(self, input_: List[List[str]], encoded_input: torch.tensor):
+        """Runs the transducer for greedy decoding.
+
+        Args:
+            input_: Input string.
+            encoded_input: Tensor with integer character codes with dimensions (B x L x E)."""
+        batch_size = encoded_input.size()[0]
+
+        # adjust initial decoder states if batch_size has changed
+        self.h0_c0 = batch_size
+
+        # initialize state variables
+        alignment = torch.full((batch_size,), 0, device=self.device)
+        action_history = torch.IntTensor([[[BEGIN_WORD]] * batch_size],
+                                         device=self.device)
+        log_p = torch.full((1, batch_size), 0.0, device=self.device)
+        true_input_lengths = torch.tensor(
+             # +1 because end word is not included in input
+             [len(i) + 1 for i in input_], device=self.device)
+
+        # run encoder
+        bidirectional_emb = self.encoder_step(encoded_input)
+
+        # initial cell state for decoder
         decoder = self.h0_c0
 
-        true_input_lengths = torch.tensor(
-            # +1 because end word is not included in input
-            [len(i) + 1 for i in input_], device=self.device)
-
-        alignment = torch.full((batch_size,), 0, device=self.device)
-        # maps action index to alignment update
-        alignment_update = [0] * self.number_actions
-        for i, action in enumerate(self.vocab.actions.i2w):
-            if isinstance(action,
-                          (ConditionalCopy, ConditionalDel, ConditionalSub)):
-                alignment_update[i] = 1
-        alignment_update = torch.tensor(alignment_update, device=self.device)
-
-        valid_actions_lookup = torch.stack(
-            [self.compute_valid_actions(s)
-             # len(bidreictional_emb) = max input length
-             for s in range(len(bidirectional_emb) + 1)],
-            dim=0).unsqueeze(dim=0)
-
-        action_history = torch.IntTensor([[[BEGIN_WORD]] * batch_size])
-        log_p = torch.full((1, batch_size), 0.0, device=self.device)
-
-        if is_training:
-            # build mask for optimal actions (necessary for error term in loss func.)
-            # actions are precomputed (before training)
-            # optimal actions --> ACTIONS TO MAXIMIZE
-            max_len_actions = len(max(optimal_actions, key=len))
-            optimal_actions_lookup = torch.full(
-                (1, max_len_actions, batch_size, self.number_actions), False,
-                dtype=torch.bool, device=self.device)
-            batch_pos, seq_pos, emb_pos = \
-                zip(*[(b, s, a) for b in range(len(optimal_actions))
-                      for s in range(min(len(optimal_actions[b]), max_len_actions))
-                      for a in optimal_actions[b][s]])
-            optimal_actions_lookup[:, seq_pos, batch_pos, emb_pos] = True
-
-            loss = torch.full((1, batch_size), 0.0, requires_grad=True,
-                              device=self.device)
-
-            # the training goal is to minimize the (softmax) loss of the target
-            # actions vector (see below). these actions are not dynamically computed
-            # --> it only makes sense to decode until for all seqs in the batch
-            # decoding steps >= length of target action sequence
-            optimal_actions_lengths = torch.tensor([len(s) for s in optimal_actions],
-                                                   device=self.device)
-
-            def continue_decoding():
-                return torch.where(
-                    action_history.size(2) - 1 >= optimal_actions_lengths, 0, 1
-                ).sum() > 0
-        else:
-            loss = None
-
-            # during evaluation decoding is continued until
-            # all sequences in the batch have "found" an end word
-            def continue_decoding():
-                return torch.any(action_history == END_WORD, dim=2).sum() < batch_size
+        # decoding is continued until all sequences
+        # in the batch have "found" an end word
+        def continue_decoding():
+            return torch.any(action_history == END_WORD, dim=2).sum() < batch_size
 
         while continue_decoding() and action_history.size(2) <= MAX_ACTION_SEQ_LEN:
+            valid_actions_mask = self.valid_actions_lookup[:, true_input_lengths - alignment]
 
-            valid_actions_mask = valid_actions_lookup[:, true_input_lengths - alignment]
+            # run decoder
+            decoder_output, decoder = self.decoder_step(bidirectional_emb, decoder,
+                                                        alignment, action_history[:, :, -1])
 
-            input_char_embedding = bidirectional_emb\
-                [alignment, torch.arange(bidirectional_emb.size(1))].unsqueeze(dim=0)
-            previous_action_embedding = self.act_lookup(action_history[:, :, -1])
-
-            decoder_input = torch.cat(
-                (input_char_embedding, previous_action_embedding),
-                dim=2
-            )
-            decoder_output_, decoder = self.dec(decoder_input, decoder)
-            decoder_output = decoder_output_
-
-            logits = self.W(decoder_output)
-            log_probs = self.log_softmax(logits, valid_actions_mask)
-
-            if not is_training:
-                # argmax decoding
-                actions = torch.argmax(log_probs, dim=2)
-            else:
-                # -1 as BEGIN_WORD is excluded
-                optimal_actions_mask = optimal_actions_lookup[:, action_history.size(2) - 1]
-
-                # ACTION SPACE EXPLORATION: NEXT ACTION
-                # rollin not implemented at the moment
-                # todo: rollin
-                if False:
-                    # action is picked by sampling
-                    # todo: sampling correct?
-                    actions = torch.randint(0, self.number_actions, (1, batch_size),
-                                            device=self.device)
-                    # actions = self.sample(log_probs)
-                else:
-                    # action is picked from optimal actions
-                    # reinforce model beliefs by picking highest probability
-                    # action that is consistent with oracle
-                    selected_logits = torch.clone(logits)
-                    selected_logits[~optimal_actions_mask] = -np.inf
-                    actions = torch.max(selected_logits, 2)[1]
-
-                # add loss
-                loss = loss +\
-                    self.log_sum_softmax_loss(logits, optimal_actions_mask, valid_actions_mask)
+            # get actions
+            actions, log_probs = self.calculate_actions(decoder_output, valid_actions_mask)
 
             # update states
             log_p += log_probs[:, torch.arange(batch_size), actions.squeeze(dim=0)]
@@ -391,7 +387,7 @@ class Transducer(torch.nn.Module):
                 (action_history, actions.unsqueeze(dim=2)),
                 dim=2
             )
-            alignment = alignment + alignment_update[actions.squeeze(dim=0)]
+            alignment = alignment + self.alignment_update[actions.squeeze(dim=0)]
 
         # trim action history
         # --> first element is not considered (begin-of-sequence-token)
@@ -399,36 +395,26 @@ class Transducer(torch.nn.Module):
         action_history = [seq[1:(seq.index(EndOfSequence()) + 1 if EndOfSequence() in seq else -1)]
                           for seq in action_history.squeeze(dim=0).tolist()]
 
-        if is_training:
-            # the loss is divided by the number of tokens in the sequence
-            # that are minimized --> loss = avg. loss per token (per seq in batch)
-            loss = -loss / optimal_actions_lengths
-            # we do the same for log_p
-            log_p = log_p / optimal_actions_lengths
-        else:
-            # in eval mode log_p is divided
-            # by number of generated output tokens
-            log_p = log_p / torch.tensor([len(h) for h in action_history], device=self.device)
-
         return Output(action_history, self.batch_decode(input_, action_history),
-                      torch.mean(log_p).item(), loss)
+                      torch.mean(log_p).item(), None)
 
     def batch_decode(self, input_: Union[List[str], List[List[str]]], encoded_output: List[List[int]]) -> List[str]:
+        """Decode a list of encoded output sequences given their string input."""
         output = []
         for i, seq in enumerate(encoded_output):
-            decoded_seq = []
+            decoded_seq = ""
             alignment = 0
             for a in seq:
                 char_, alignment, _ = self.decode_char(input_[i], a, alignment)
-                if char_ != "":
-                    decoded_seq.append(char_)
+                decoded_seq += char_
             output.append("".join(decoded_seq))
 
         return output
 
-    def decode_char(self, input_: Union[str, List[str]],
-                    encoded_action: int, alignment: int) -> Tuple[str, int, bool]:
-        action = self.vocab.decode_action(encoded_action)
+    def decode_char(self, input_: Union[str, List[str]], action: Union[int, Edit],
+                    alignment: Union[int, torch.tensor]) -> Tuple[str, int, bool]:
+        if isinstance(action, int):
+            action = self.vocab.decode_action(action)
         stop = False
 
         if isinstance(action, ConditionalCopy):
@@ -452,7 +438,7 @@ class Transducer(torch.nn.Module):
 
         return char_, alignment, stop
 
-    def beam_search_decode(self, input_: str, encoded_input: List[int],
+    def beam_search_decode(self, input_: str, encoded_input: torch.tensor,
                            beam_width: int):
         """Runs the transducer with beam search.
 
@@ -461,16 +447,14 @@ class Transducer(torch.nn.Module):
             encoded_input: List of integer character codes.
             beam_width: Width of the beam search.
         """
-        input_emb = self.input_embedding(encoded_input, is_training=False)
-        bidirectional_emb_, _ = self.enc(input_emb)
-        bidirectional_emb = torch.transpose(bidirectional_emb_, 1, 0)
+        # run encoder
+        bidirectional_emb = self.encoder_step(encoded_input)
         input_length = len(bidirectional_emb)
-        decoder = self.h0_c0
 
         beam: List[Hypothesis] = [
-            Hypothesis(action_history=[BEGIN_WORD],
-                       alignment=0,
-                       decoder=decoder,
+            Hypothesis(action_history=torch.tensor([[BEGIN_WORD]], device=self.device),
+                       alignment=torch.tensor([0], device=self.device),
+                       decoder=self.h0_c0,
                        negative_log_p=0.,
                        output=[])]
 
@@ -483,29 +467,23 @@ class Transducer(torch.nn.Module):
 
             for hypothesis in beam:
 
-                length_encoder_suffix = input_length - hypothesis.alignment
-                valid_actions = self.compute_valid_actions(length_encoder_suffix)
+                length_encoder_suffix = max(input_length - hypothesis.alignment, torch.tensor([0], device=self.device))
+                valid_actions_mask = self.valid_actions_lookup[:, length_encoder_suffix]
                 # decoder
-                decoder_input = torch.cat([
-                    bidirectional_emb[hypothesis.alignment],
-                    self.act_lookup(torch.tensor([hypothesis.action_history[-1]],
-                                                 device=self.device))
-                ], dim=1,
-                ).unsqueeze(1)
-                decoder_output_, decoder = self.dec(decoder_input, hypothesis.decoder)
-
-                decoder_output = decoder_output_
+                decoder_output, decoder = self.decoder_step(bidirectional_emb, hypothesis.decoder,
+                                                            hypothesis.alignment,
+                                                            hypothesis.action_history[-1].unsqueeze(dim=0))
                 logits = self.W(decoder_output)
-                log_probs = self.log_softmax(logits, valid_actions.unsqueeze(dim=0).unsqueeze(dim=1))
+                log_probs = self.log_softmax(logits, valid_actions_mask)
 
-                for i, action in enumerate(valid_actions):
-                    if not action:
+                for action in torch.arange(0, valid_actions_mask.size(2), device=self.device):
+                    if not valid_actions_mask[0, 0, action]:
                         continue
                     log_p = hypothesis.negative_log_p - \
-                            log_probs[0, 0, i]  # min heap, so minus
+                            log_probs[0, 0, action]  # min heap, so minus
 
                     heapq.heappush(expansions,
-                                   Expansion(action, decoder,
+                                   Expansion(action.reshape(1, -1), decoder,
                                              hypothesis, log_p))
 
             beam: List[Hypothesis] = []
@@ -515,39 +493,31 @@ class Transducer(torch.nn.Module):
                 expansion: Expansion = heapq.heappop(expansions)
                 from_hypothesis = expansion.from_hypothesis
                 action = expansion.action
-                action_history = list(from_hypothesis.action_history)
-                action_history.append(action)
+                action_history = from_hypothesis.action_history
+                action_history = torch.cat(
+                    (action_history, action)
+                )
                 output = list(from_hypothesis.output)
 
                 # execute the action to update the transducer state
-                action = self.vocab.decode_action(action)
+                action = self.vocab.decode_action(action.item())
 
                 if isinstance(action, EndOfSequence):
                     # 1. COMPLETE HYPOTHESIS, REDUCE BEAM
                     complete_hypothesis = Output(
                         action_history=action_history,
-                        output="".join(output),
+                        output=["".join(output)],
                         log_p=-expansion.negative_log_p)  # undo min heap minus
 
                     complete_hypotheses.append(complete_hypothesis)
                     beam_width -= 1
                 else:
                     # 2. EXECUTE ACTION AND ADD FULL HYPOTHESIS TO NEW BEAM
-                    alignment = from_hypothesis.alignment
+                    alignment = from_hypothesis.alignment.clone()
 
-                    if isinstance(action, ConditionalCopy):
-                        char_ = input_[alignment]
-                        alignment += 1
+                    char_, alignment, _ = self.decode_char(input_, action, alignment)
+                    if char_ != "":
                         output.append(char_)
-                    elif isinstance(action, ConditionalDel):
-                        alignment += 1
-                    elif isinstance(action, ConditionalIns):
-                        output.append(action.new)
-                    elif isinstance(action, ConditionalSub):
-                        alignment += 1
-                        output.append(action.new)
-                    else:
-                        raise ValueError(f"Unknown action: {action}.")
 
                     hypothesis = Hypothesis(
                         action_history=action_history,
@@ -566,7 +536,7 @@ class Transducer(torch.nn.Module):
 
                 complete_hypothesis = Output(
                     action_history=hypothesis.action_history,
-                    output="".join(hypothesis.output),
+                    output=["".join(hypothesis.output)],
                     log_p=-hypothesis.negative_log_p)  # undo min heap minus
 
                 complete_hypotheses.append(complete_hypothesis)

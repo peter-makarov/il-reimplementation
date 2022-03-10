@@ -18,7 +18,6 @@ from trans import transducer
 from trans import utils
 from trans import vocabulary
 
-
 random.seed(1)
 
 
@@ -43,10 +42,10 @@ def decode(transducer_: transducer.Transducer, data_loader: torch.utils.data.Dat
             if p == targets[i]:
                 correct += 1
         loss += output.log_p
-        if j > 0 and j % 500 == 0:
-            logging.info("\t\t...%d samples", j)
+        if j > 0 and j % 100 == 0:
+            logging.info("\t\t...%d batches", j)
         j += 1
-    logging.info("\t\t...%d samples", j)
+    logging.info("\t\t...%d batches", j)
 
     return utils.DecodingOutput(accuracy=correct / len(data_loader.dataset),
                                 loss=-loss / len(data_loader.dataset),
@@ -58,8 +57,46 @@ def inverse_sigmoid_schedule(k: int):
     return lambda epoch: (1 - k / (k + np.exp(epoch / k)))
 
 
-def main(args: argparse.Namespace):
+def precompute_from_expert(s: utils.Sample, transducer_: transducer.Transducer) -> None:
+    alignment_history = [0]
+    action_history = [[vocabulary.BEGIN_WORD]]
+    output = []
+    a = 0
+    stop = False
 
+    # continue until end-of-sequence-token is found
+    # (or max seq len is reached)
+    while not stop and len(output) <= transducer.MAX_ACTION_SEQ_LEN:
+        actions = transducer_.expert_rollout(s.input, s.target, a, output)
+        # todo: allow optimization of multiple target actions
+        action_history.append([actions[0]])
+
+        char_, a, stop = transducer_.decode_char(s.input, actions[0], a)
+        alignment_history.append(a)
+        if char_ != "":
+            output.append(char_)
+
+    optimal_actions_mask = torch.full(
+        (len(action_history)-1, transducer_.number_actions),
+        False, dtype=torch.bool, device=args.device)
+    seq_pos, emb_pos = zip(*[(s-1, a) for s in range(1, len(action_history))
+                             for a in action_history[s]])
+    optimal_actions_mask[seq_pos, emb_pos] = True
+    s.optimal_actions_mask = optimal_actions_mask
+
+    # now this is a crucial part: the last alignment index as well as the last action
+    # are irrelevant and changing these lines will mess up training
+    s.alignment_history = torch.tensor(alignment_history[:-1], device=args.device)
+    s.action_history = torch.tensor(action_history[:-1], device=args.device).squeeze(dim=1)
+
+    valid_actions_mask = torch.stack(
+        # + 1 is needed to compensate for lack of end-of-seq-token
+        # :-1 for same reason as above
+        [transducer_.compute_valid_actions(len(s.input) + 1 - a) for a in alignment_history[:-1]], dim=0)
+    s.valid_actions_mask = valid_actions_mask
+
+
+def main(args: argparse.Namespace):
     dargs = args.__dict__
     for key, value in dargs.items():
         logging.info("%s: %s", str(key).ljust(15), value)
@@ -77,7 +114,8 @@ def main(args: argparse.Namespace):
     with utils.OpenNormalize(args.train, args.nfd) as f:
         for line in f:
             input_, target = line.rstrip().split("\t", 1)
-            encoded_input = vocabulary_.encode_input(input_)
+            encoded_input = torch.tensor(vocabulary_.encode_input(input_),
+                                         device=args.device)
             vocabulary_.encode_actions(target)
             sample = utils.Sample(input_, target, encoded_input)
             training_data.add_samples(sample)
@@ -94,7 +132,8 @@ def main(args: argparse.Namespace):
     with utils.OpenNormalize(args.dev, args.nfd) as f:
         for line in f:
             input_, target = line.rstrip().split("\t", 1)
-            encoded_input = vocabulary_.encode_unseen_input(input_)
+            encoded_input = torch.tensor(vocabulary_.encode_unseen_input(input_),
+                                         device=args.device)
             sample = utils.Sample(input_, target, encoded_input)
             development_data.add_samples(sample)
     development_data_loader = development_data.get_data_loader()
@@ -105,7 +144,8 @@ def main(args: argparse.Namespace):
             for line in f:
                 input_, *optional_target = line.rstrip().split("\t", 1)
                 target = optional_target[0] if optional_target else None
-                encoded_input = vocabulary_.encode_unseen_input(input_)
+                encoded_input = torch.tensor(vocabulary_.encode_unseen_input(input_),
+                                             device=args.device)
                 sample = utils.Sample(input_, target, encoded_input)
                 test_data.add_samples(sample)
         test_data_loader = test_data.get_data_loader()
@@ -118,21 +158,10 @@ def main(args: argparse.Namespace):
 
     transducer_ = transducer.Transducer(vocabulary_, expert, **dargs)
 
-    # precompute optimal actions
+    # precompute from expert
     for s in training_data.samples:
-        if not s.optimal_actions:
-            s.optimal_actions = []
-        alignment = 0
-        output = []
-        stop = False
-        while not stop and len(output) <= transducer.MAX_ACTION_SEQ_LEN:
-            actions = transducer_.expert_rollout(s.input, s.target, alignment, output)
-            # todo: allow optimization of multiple target actions
-            s.optimal_actions.append([actions[0]])
-            char_, alignment, stop = transducer_.decode_char(s.input, actions[0], alignment)
-            if char_ != "":
-                output.append(char_)
-    training_data_loader = training_data.get_data_loader(batch_size=args.batch_size)
+        precompute_from_expert(s, transducer_)
+    training_data_loader = training_data.get_data_loader(is_training=True, batch_size=args.batch_size)
 
     widgets = [progressbar.Bar(">"), " ", progressbar.ETA()]
     train_progress_bar = progressbar.ProgressBar(
@@ -146,7 +175,7 @@ def main(args: argparse.Namespace):
 
     optimizer = torch.optim.Adadelta(transducer_.parameters())
     train_subset_loader = utils.Dataset(training_data.samples[:100]).get_data_loader()
-    rollin_schedule = inverse_sigmoid_schedule(args.k)
+    # rollin_schedule = inverse_sigmoid_schedule(args.k)
     max_patience = args.patience
 
     logging.info("Training for a maximum of %d with a maximum patience of %d.",
@@ -162,20 +191,20 @@ def main(args: argparse.Namespace):
 
         logging.info("Training...")
         transducer_.train()
+        transducer_.zero_grad()
         with utils.Timer():
             train_loss = 0.
-            rollin = rollin_schedule(epoch)
+            # rollin not implemented at the moment
+            # rollin = rollin_schedule(epoch)
             j = 0
             for j, batch in enumerate(training_data_loader):
-                output = transducer_.transduce(
-                    input_=batch.input,
-                    encoded_input=batch.encoded_input,
-                    target=batch.target,
-                    optimal_actions=batch.optimal_actions,
-                    rollin=rollin,
-                )
-                train_loss += torch.mean(output.losses.squeeze(dim=0)).item()
-                output.losses.sum().backward()
+                losses = transducer_.training_step(encoded_input=batch.encoded_input,
+                                                   action_history=batch.action_history,
+                                                   alignment_history=batch.alignment_history,
+                                                   optimal_actions_mask=batch.optimal_actions_mask,
+                                                   valid_actions_mask=batch.valid_actions_mask)
+                train_loss += torch.mean(losses.squeeze(dim=0)).item()  # mean per batch
+                losses.sum().backward()
                 if j % args.grad_accumulation == 0:
                     optimizer.step()
                     transducer_.zero_grad()
@@ -245,7 +274,6 @@ def main(args: argparse.Namespace):
         if args.test is not None:
             evaluations.append((test_data_loader, "test"))
         for data, dataset_name in evaluations:
-
             logging.info("Evaluating best model on %s data using beam search "
                          "(beam width %d)...", dataset_name, args.beam_width)
             with utils.Timer():
@@ -264,14 +292,13 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
-
     logging.basicConfig(level="INFO", format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
         description="Train a g2p neural transducer.")
 
     '''parser.add_argument("--dynet-seed", type=int, required=True,
-                        help="DyNET random seed.")''' # TODO: how to replace if at all?
+                        help="DyNET random seed.")'''  # TODO: how to replace if at all?
     parser.add_argument("--train", type=str, required=True,
                         help="Path to train set data.")
     parser.add_argument("--dev", type=str, required=True,
@@ -296,8 +323,8 @@ if __name__ == "__main__":
                         help="Number of decoder LSTM layers.")
     parser.add_argument("--beam-width", type=int, default=4,
                         help="Beam width for beam search decoding.")
-    parser.add_argument("--k", type=int, default=1,
-                        help="k for inverse sigmoid rollin schedule.")
+    # parser.add_argument("--k", type=int, default=1,
+    #                     help="k for inverse sigmoid rollin schedule.")
     parser.add_argument("--patience", type=int, default=12,
                         help="Maximal patience for early stopping.")
     parser.add_argument("--epochs", type=int, default=60,
