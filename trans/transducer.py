@@ -273,8 +273,8 @@ class Transducer(torch.nn.Module):
         """Runs the encoder.
 
         Args:
-            encoded_input: tensor of encoded input character codes
-            is_training: bool indicating whether model is in training or not.
+            encoded_input: Encoded input character codes.
+            is_training: Bool indicating whether model is in training or not.
 
         Returns:
             Encoder output."""
@@ -287,6 +287,15 @@ class Transducer(torch.nn.Module):
                      decoder_cell_state: torch.tensor,
                      alignment: torch.tensor,
                      action_history: torch.tensor) -> torch.tensor:
+        """Runs the decoder.
+
+        Args:
+            encoder_output: The encoder output.
+            decoder_cell_state: The initial decoder cell state.
+            alignment: The alignment for all sequences in the batch. This tensor is of shape (L x B) x 1.
+            action_history: The action history.
+        Returns:
+            Decoder output."""
         # build decoder input
         batch_size = encoder_output.size(1)
         input_char_embedding = encoder_output \
@@ -300,7 +309,6 @@ class Transducer(torch.nn.Module):
             dim=2
         )
 
-        # returns tuple of (hidden_state, cell_state)
         return self.dec(decoder_input, decoder_cell_state)
 
     def calculate_actions(self, decoder_output: torch.tensor, valid_actions_mask: torch.tensor)\
@@ -317,7 +325,16 @@ class Transducer(torch.nn.Module):
                       optimal_actions_mask: torch.tensor,
                       valid_actions_mask: torch.tensor,
                       ) -> torch.tensor:
-        """Run a training step and return the respective loss for all sequences in the batch."""
+        """Run a training step and return the respective loss for all sequences in the batch.
+        Args:
+            encoded_input: Encoded input character codes.
+            action_history: The action history for all sequences. During training this is based on the optimal actions (from the expert).
+            alignment_history: The alignment history for all sequences. During training this is based on the optimal alignment (from the expert).
+            optimal_actions_mask: A boolean mask indicating the optimal action for all tokens in the batch.
+            valid_actions_mask: A boolean mask indicating all valid actions for all tokens in the batch.
+        Returns:
+            The loss for sequences in the batch. The loss is calculated on sequence-level, i.e., for each sequence
+            a single gradient is produced."""
         batch_size = encoded_input.size()[0]
 
         # adjust initial decoder states if batch_size has changed
@@ -403,7 +420,7 @@ class Transducer(torch.nn.Module):
         return Output(action_history, self.batch_decode(input_, action_history),
                       log_p, None)
 
-    def batch_decode(self, input_: Union[List[str], List[List[str]]], encoded_output: List[List[int]]) -> List[str]:
+    def batch_decode(self, input_: List[List[str]], encoded_output: List[List[int]]) -> List[str]:
         """Decode a list of encoded output sequences given their string input."""
         output = []
         for i, seq in enumerate(encoded_output):
