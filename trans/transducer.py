@@ -253,7 +253,7 @@ class Transducer(torch.nn.Module):
             -np.inf,
             device=self.device,
         )  # All actions invalid by default.
-        log_validity[valid_actions] = 0.
+        log_validity[valid_actions_mask] = 0.
         return logits + log_validity
 
     def log_softmax(self, logits: torch.tensor,
@@ -266,7 +266,7 @@ class Transducer(torch.nn.Module):
         Returns:
             The logits after marking non-valid actions as such and applying the log_softmax function."""
         logits_valid = self.mark_as_invalid(logits, valid_actions_mask)
-        return torch.nn.functional.log_softmax(logits_valid, )
+        return torch.nn.functional.log_softmax(logits_valid, dim=2)
 
     def log_sum_softmax_loss(self, logits: torch.tensor,
                              optimal_actions_mask: torch.tensor,

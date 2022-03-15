@@ -80,7 +80,7 @@ def precompute_from_expert(s: utils.Sample, transducer_: transducer.Transducer) 
         # todo: allow optimization of multiple target actions
         action_history.append([actions[0]])
 
-        char_, a, stop = transducer_.decode_char(s.input, actions[0], a)
+        char_, a, stop = transducer_.decode_single_action(s.input, actions[0], a)
         alignment_history.append(a)
         if char_ != "":
             output.append(char_)
