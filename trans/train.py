@@ -58,6 +58,15 @@ def inverse_sigmoid_schedule(k: int):
 
 
 def precompute_from_expert(s: utils.Sample, transducer_: transducer.Transducer) -> None:
+    """ Precompute the optimal policy (optimal and valid actions as well as the alignment) from the expert.
+
+    Args:
+        s: A data sample.
+        transducer_: The transducer object holding the expert.
+
+    Returns:
+        None
+    """
     alignment_history = [0]
     action_history = [[vocabulary.BEGIN_WORD]]
     output = []
