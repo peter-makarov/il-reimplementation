@@ -1,5 +1,6 @@
 """Unit tests for transducer.py."""
 import unittest
+import argparse
 
 import numpy as np
 from scipy.special import log_softmax
@@ -24,8 +25,21 @@ class TransducerTests(unittest.TestCase):
         vocabulary_.encode_input("foo")
         vocabulary_.encode_actions("bar")
         expert = optimal_expert.OptimalExpert()
+
+        args = argparse.Namespace(
+            device='cpu',
+            char_dim=100,
+            action_dim=100,
+            enc_type='lstm',
+            enc_hidden_dim=200,
+            enc_layers=1,
+            enc_bidirectional=True,
+            enc_dropout=0.,
+            dec_hidden_dim=100,
+            dec_layers=1
+        )
         cls.transducer = transducer.Transducer(
-            vocabulary_, expert, 3, 3, 3, 1, 3, 1)
+            vocabulary_, expert, args)
 
     def test_sample(self):
         log_probs = log_softmax([5, 4, 10, 1])
