@@ -1,6 +1,4 @@
 """Trains a grapheme-to-phoneme neural transducer."""
-from typing import List, Optional, Union
-
 import argparse
 import logging
 import os
@@ -57,12 +55,11 @@ def decode(transducer_: transducer.Transducer, data_loader: torch.utils.data.Dat
 def inverse_sigmoid_schedule(k: int):
     """Probability of sampling an action from the model as function of epoch."""
     return lambda epoch: (1 - k / (k + np.exp(epoch / k)))
+    return lambda epoch: (1 - k / (k + np.exp(epoch / k)))
 
 
 def main(args: argparse.Namespace):
-
-    dargs = args.__dict__
-    for key, value in dargs.items():
+    for key, value in vars(args).items():
         logging.info("%s: %s", str(key).ljust(15), value)
 
     os.makedirs(args.output)
@@ -121,7 +118,7 @@ def main(args: argparse.Namespace):
         output_path=sed_parameters_path)
     expert = optimal_expert_substitutions.OptimalSubstitutionExpert(sed_aligner)
 
-    transducer_ = transducer.Transducer(vocabulary_, expert, dargs)
+    transducer_ = transducer.Transducer(vocabulary_, expert, args)
 
     widgets = [progressbar.Bar(">"), " ", progressbar.ETA()]
     train_progress_bar = progressbar.ProgressBar(
@@ -133,10 +130,10 @@ def main(args: argparse.Namespace):
     with open(train_log_path, "w") as w:
         w.write("epoch\tavg_loss\ttrain_accuracy\tdev_accuracy\n")
 
-    optimizer = OPTIMIZER_MAPPING[args.optimizer](transducer_.parameters(), dargs)
+    optimizer = OPTIMIZER_MAPPING[args.optimizer](transducer_.parameters(), args)
     scheduler = None
     if args.scheduler:
-        scheduler = LR_SCHEDULER_MAPPING[args.scheduler](optimizer, dargs)
+        scheduler = LR_SCHEDULER_MAPPING[args.scheduler](optimizer, args)
     train_subset_loader = utils.Dataset(training_data.samples[:100]).get_data_loader()
     rollin_schedule = inverse_sigmoid_schedule(args.k)
     max_patience = args.patience
@@ -232,7 +229,7 @@ def main(args: argparse.Namespace):
     if not os.path.exists(best_model_path):
         sys.exit(0)
 
-    transducer_ = transducer.Transducer(vocabulary_, expert, dargs)
+    transducer_ = transducer.Transducer(vocabulary_, expert, args)
     transducer_.load_state_dict(torch.load(best_model_path))
 
     transducer_.eval()
@@ -241,7 +238,6 @@ def main(args: argparse.Namespace):
         if args.test is not None:
             evaluations.append((test_data_loader, "test"))
         for data, dataset_name in evaluations:
-
             logging.info("Evaluating best model on %s data using beam search "
                          "(beam width %d)...", dataset_name, args.beam_width)
             with utils.Timer():
@@ -249,7 +245,7 @@ def main(args: argparse.Namespace):
             utils.write_results(beam_decoding.accuracy,
                                 beam_decoding.predictions, args.output,
                                 args.nfd, dataset_name, args.beam_width,
-                                dargs=dargs)
+                                dargs=vars(args))
             logging.info("Evaluating best model on %s data using greedy decoding"
                          , dataset_name)
             with utils.Timer():

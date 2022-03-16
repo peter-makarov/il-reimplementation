@@ -8,14 +8,15 @@ import torch
 
 @register_component('adam', 'optimizer')
 class Adam(torch.optim.Adam):
-    def __init__(self, params, dargs: dict):
+    """Adam optimizer."""
+    def __init__(self, params, args: argparse.Namespace):
         super().__init__(
             params,
-            lr=dargs['lr'],
-            betas=dargs['betas'],
-            eps=dargs['eps'],
-            weight_decay=dargs['weight_decay'],
-            amsgrad=dargs['amsgrad']
+            lr=args.lr,
+            betas=args.betas,
+            eps=args.eps,
+            weight_decay=args.weight_decay,
+            amsgrad=args.amsgrad
         )
 
     @staticmethod
@@ -29,13 +30,14 @@ class Adam(torch.optim.Adam):
 
 @register_component('adadelta', 'optimizer')
 class Adadelta(torch.optim.Adadelta):
-    def __init__(self, params, dargs: dict):
+    """Adadelta optimizer."""
+    def __init__(self, params, args: argparse.Namespace):
         super().__init__(
             params,
-            lr=dargs['lr'],
-            rho=dargs['rho'],
-            eps=dargs['eps'],
-            weight_decay=dargs['weight_decay']
+            lr=args.lr,
+            rho=args.rho,
+            eps=args.eps,
+            weight_decay=args.weight_decay
         )
 
     @staticmethod
@@ -48,15 +50,16 @@ class Adadelta(torch.optim.Adadelta):
 
 @register_component('inv_sr', 'lr_scheduler')
 class InvSRScheduler(torch.optim.lr_scheduler._LRScheduler):
-    def __init__(self, optimizer: torch.optim, dargs: dict):
-        self.warmup_steps = dargs['warmup_steps']
+    """Inverse square root scheduler."""
+    def __init__(self, optimizer: torch.optim, args: argparse.Namespace):
+        self.warmup_steps = args.warmup_steps
         lr = optimizer.param_groups[0]['lr']
-        self.init_lr = dargs['warmup_init_lr'] if dargs['warmup_steps'] > 0 else lr
+        self.init_lr = args.warmup_init_lr if args.warmup_steps > 0 else lr
         self.final_lr = lr
         super().__init__(
             optimizer,
-            last_epoch=dargs['last_epoch'],
-            verbose=dargs['verbose']
+            last_epoch=args.last_epoch,
+            verbose=args.verbose
         )
 
     def get_lr(self):

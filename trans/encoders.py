@@ -9,14 +9,15 @@ import torch
 
 @register_component('lstm', 'encoder')
 class LSTMEncoder(torch.nn.LSTM):
-    def __init__(self, dargs: dict):
+    """LSTM-based encoder."""
+    def __init__(self, args: argparse.Namespace):
         super().__init__(
-            input_size=dargs['char_dim'],
-            hidden_size=dargs['enc_hidden_dim'],
-            num_layers=dargs['enc_layers'],
-            bidirectional=dargs['enc_bidirectional'],
-            dropout=dargs['enc_dropout'],
-            device=dargs['device']
+            input_size=args.char_dim,
+            hidden_size=args.enc_hidden_dim,
+            num_layers=args.enc_layers,
+            bidirectional=args.enc_bidirectional,
+            dropout=args.enc_dropout,
+            device=args.device
         )
 
     @staticmethod
@@ -38,23 +39,24 @@ class LSTMEncoder(torch.nn.LSTM):
 
 @register_component('transformer', 'encoder')
 class TransformerEncoder(torch.nn.Module):
-    def __init__(self, dargs: dict):
+    """Transformber-based encoder."""
+    def __init__(self, args: argparse.Namespace):
         super().__init__()
-        self.d_model = dargs['char_dim']
+        self.d_model = args.char_dim
         self.pos_encoding = PositionalEncoding(
-            d_model=dargs['char_dim'],
-            dropout=dargs['enc_dropout']
+            d_model=args.char_dim,
+            dropout=args.enc_dropout
         )
         self.encoder_layer = torch.nn.TransformerEncoderLayer(
-            d_model=dargs['char_dim'],
-            nhead=dargs['enc_nhead'],
-            dim_feedforward=dargs['enc_dim_feedforward'],
-            dropout=dargs['enc_dropout'],
-            device=dargs['device']
+            d_model=args.char_dim,
+            nhead=args.enc_nhead,
+            dim_feedforward=args.enc_dim_feedforward,
+            dropout=args.enc_dropout,
+            device=args.device
         )
         self.transformer_encoder = torch.nn.TransformerEncoder(
             encoder_layer=self.encoder_layer,
-            num_layers=dargs['enc_layers']
+            num_layers=args.enc_layers
         )
 
     def forward(self, src, mask=None, src_key_padding_mask=None):
@@ -78,6 +80,7 @@ class TransformerEncoder(torch.nn.Module):
 
 
 class PositionalEncoding(torch.nn.Module):
+    """Positional encoding for embeddings used by the Transformer encoder."""
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 150):
         super().__init__()
         self.dropout = torch.nn.Dropout(p=dropout)

@@ -6,6 +6,7 @@ LR_SCHEDULER_MAPPING = {}
 def register_component(name, type_):
     """
     This method can be used as a decorator to add components (encoder, optimizer or lr scheduler) to the cli interface.
+
     Args:
         name: name of the component
         type_: type of the component
