@@ -74,8 +74,8 @@ class Transducer(torch.nn.Module):
         self.substitutions = self.vocab.substitutions
         self.inserts = self.vocab.insertions
 
-        self.dec_layers = dec_layers
-        self.dec_hidden_dim = dec_hidden_dim
+        self.dec_layers = args.dec_layers
+        self.dec_hidden_dim = args.dec_hidden_dim
 
         # encoder
         self.char_lookup = torch.nn.Embedding(
