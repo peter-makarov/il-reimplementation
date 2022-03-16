@@ -50,7 +50,7 @@ class TransducerTests(unittest.TestCase):
         valid_actions = self.transducer.compute_valid_actions(3)
         self.assertTrue(self.transducer.number_actions, len(valid_actions))
         valid_actions = self.transducer.compute_valid_actions(1)
-        self.assertTrue(ConditionalCopy not in valid_actions)
+        self.assertTrue(not valid_actions[vocabulary.COPY])
 
     def test_remap_actions(self):
         action_scores = {Copy("w", "w"): 7., Sub("w", "v"): 5.}

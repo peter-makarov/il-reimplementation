@@ -7,13 +7,34 @@ import time
 import re
 import unicodedata
 import torch
+from trans.vocabulary import PAD
 
 
 @dataclasses.dataclass
 class Sample:
     input: str
     target: Optional[str]
-    encoded_input: Optional[Union[List[int], List[torch.Tensor]]] = None
+    encoded_input: Optional[torch.tensor] = None
+    action_history: Optional[torch.tensor] = None
+    alignment_history: Optional[torch.tensor] = None
+    optimal_actions_mask: Optional[torch.tensor] = None
+    valid_actions_mask: Optional[torch.tensor] = None
+
+
+@dataclasses.dataclass
+class TrainingBatch:
+    encoded_input: torch.tensor
+    action_history: torch.tensor
+    alignment_history: torch.tensor
+    optimal_actions_mask: torch.tensor
+    valid_actions_mask: torch.tensor
+
+
+@dataclasses.dataclass
+class EvalBatch:
+    input: List[str]
+    target: Optional[List[str]]
+    encoded_input: torch.tensor
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -32,9 +53,38 @@ class Dataset(torch.utils.data.Dataset):
         else:
             self.samples.append(samples)
 
-    def get_data_loader(self, **kwargs):
-        if not 'collate_fn' in kwargs:
-            kwargs['collate_fn'] = lambda b: b
+    def get_data_loader(self, is_training: bool = False, **kwargs):
+        if 'collate_fn' not in kwargs:
+            if 'pad_index' not in kwargs:
+                pad_index = PAD
+
+            if is_training:
+                def collate(batch: List):
+                    max_len = len(max([s.encoded_input for s in batch], key=len))-2
+                    return TrainingBatch(
+                        torch.nn.utils.rnn.pad_sequence([s.encoded_input for s in batch],
+                                                        batch_first=True,
+                                                        padding_value=pad_index),
+                        torch.nn.utils.rnn.pad_sequence([s.action_history for s in batch],
+                                                        padding_value=pad_index),
+                        torch.nn.utils.rnn.pad_sequence([s.alignment_history for s in batch],
+                                                        batch_first=True,
+                                                        padding_value=max_len).view(-1),
+                        torch.nn.utils.rnn.pad_sequence([s.optimal_actions_mask for s in batch],
+                                                        padding_value=False),
+                        torch.nn.utils.rnn.pad_sequence([s.valid_actions_mask for s in batch],
+                                                        padding_value=False)
+                    )
+            else:
+                def collate(batch: List):
+                    return EvalBatch([s.input for s in batch],
+                                     [s.target for s in batch],
+                                     torch.nn.utils.rnn.pad_sequence([s.encoded_input for s in batch],
+                                                                     batch_first=True,
+                                                                     padding_value=pad_index)
+                                     )
+
+            kwargs['collate_fn'] = collate
 
         return torch.utils.data.DataLoader(self, **kwargs)
 
@@ -83,7 +133,6 @@ def write_results(accuracy: float, predictions: List[str], output: str,
                   normalize: bool, dataset_name: str, beam_width: int = 1,
                   decoding_name: Optional[str] = None,
                   dargs: Dict[str, Any] = None):
-
     logging.info("%s set accuracy: %.4f.", dataset_name.title(), accuracy)
 
     if decoding_name is None:

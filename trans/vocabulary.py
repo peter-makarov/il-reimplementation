@@ -7,11 +7,12 @@ from trans.actions import BeginOfSequence, ConditionalCopy, ConditionalDel, \
 
 
 UNK_CHAR = "<UNK>"
+PAD_CHAR = "<PAD>"
 
 
 class Vocabulary:
 
-    EXTRAS = BeginOfSequence(), EndOfSequence(), UNK_CHAR
+    EXTRAS = BeginOfSequence(), EndOfSequence(), PAD_CHAR, UNK_CHAR
 
     def __init__(self, i2w: Optional[Iterable[Any]] = None):
         if i2w is None:
@@ -45,7 +46,7 @@ class Vocabulary:
 
 
 class ActionVocabulary(Vocabulary):
-    EXTRAS = BeginOfSequence(), EndOfSequence(), ConditionalDel(), ConditionalCopy()
+    EXTRAS = BeginOfSequence(), EndOfSequence(), PAD_CHAR, ConditionalDel(), ConditionalCopy()
 
     def lookup(self, word: Any) -> int:
         return self.w2i[word]  # N.B. no UNK
@@ -64,6 +65,7 @@ class ActionVocabulary(Vocabulary):
 BEGIN_WORD = Vocabulary.EXTRAS.index(BeginOfSequence())
 END_WORD = Vocabulary.EXTRAS.index(EndOfSequence())
 UNK = Vocabulary.EXTRAS.index(UNK_CHAR)
+PAD = Vocabulary.EXTRAS.index(PAD_CHAR)
 DELETE = ActionVocabulary.EXTRAS.index(ConditionalDel())
 COPY = ActionVocabulary.EXTRAS.index(ConditionalCopy())
 
