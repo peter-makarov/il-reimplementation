@@ -54,7 +54,7 @@ def decode(transducer_: transducer.Transducer, data_loader: torch.utils.data.Dat
 def inverse_sigmoid_schedule(k: int):
     """Probability of sampling an action from the model as function of epoch."""
     return lambda epoch: (1 - k / (k + np.exp(epoch / k)))
-    return lambda epoch: (1 - k / (k + np.exp(epoch / k)))
+
 
 def precompute_from_expert(s: utils.Sample, transducer_: transducer.Transducer) -> None:
     """ Precompute the optimal policy (optimal and valid actions as well as the alignment) from the expert.
@@ -85,9 +85,9 @@ def precompute_from_expert(s: utils.Sample, transducer_: transducer.Transducer) 
             output.append(char_)
 
     optimal_actions_mask = torch.full(
-        (len(action_history)-1, transducer_.number_actions),
+        (len(action_history) - 1, transducer_.number_actions),
         False, dtype=torch.bool, device=args.device)
-    seq_pos, emb_pos = zip(*[(s-1, a) for s in range(1, len(action_history))
+    seq_pos, emb_pos = zip(*[(s - 1, a) for s in range(1, len(action_history))
                              for a in action_history[s]])
     optimal_actions_mask[seq_pos, emb_pos] = True
     s.optimal_actions_mask = optimal_actions_mask
@@ -346,7 +346,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=5,
                         help="Batch size.")
     parser.add_argument("--grad-accumulation", type=int, default=1,
-                    help="Gradient accumulation.")
+                        help="Gradient accumulation.")
     parser.add_argument("--optimizer", type=str, default="adadelta",
                         choices=OPTIMIZER_MAPPING.keys(),
                         help="Optimizer used in training.")
