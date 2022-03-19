@@ -51,13 +51,13 @@ class TransformerEncoder(torch.nn.Module):
             d_model=args.char_dim,
             nhead=args.enc_nhead,
             dim_feedforward=args.enc_dim_feedforward,
-            dropout=args.enc_dropout,
-            device=args.device
+            dropout=args.enc_dropout
         )
         self.transformer_encoder = torch.nn.TransformerEncoder(
             encoder_layer=self.encoder_layer,
             num_layers=args.enc_layers
         )
+        self.to(args.device)
 
     def forward(self, src, mask=None, src_key_padding_mask=None):
         pos_encoded = self.pos_encoding(src * math.sqrt(self.d_model))

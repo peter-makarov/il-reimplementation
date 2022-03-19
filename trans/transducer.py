@@ -295,9 +295,9 @@ class Transducer(torch.nn.Module):
 
         if paddings.sum() > 0:
             log_sum_selected_terms =\
-                torch.where(~paddings, log_sum_selected_terms, torch.tensor(0.))
+                torch.where(~paddings, log_sum_selected_terms, torch.tensor(0., device=self.device))
             normalization_term =\
-                torch.where(~paddings, normalization_term, torch.tensor(0.))
+                torch.where(~paddings, normalization_term, torch.tensor(0., device=self.device))
 
         return log_sum_selected_terms - normalization_term
 
@@ -421,8 +421,8 @@ class Transducer(torch.nn.Module):
 
         # initialize state variables
         alignment = torch.full((batch_size,), 0, device=self.device)
-        action_history = torch.IntTensor([[[BEGIN_WORD]] * batch_size],
-                                         device=self.device)
+        action_history = torch.tensor([[[BEGIN_WORD]] * batch_size],
+                                      device=self.device, dtype=torch.int)
         log_p = torch.full((1, batch_size), 0.0, device=self.device)
         true_input_lengths = torch.tensor(
              # +1 because end word is not included in input
