@@ -160,10 +160,14 @@ def main(args: argparse.Namespace):
                 test_data.add_samples(sample)
         test_data_loader = test_data.get_data_loader()
 
-    sed_parameters_path = os.path.join(args.output, "sed.pkl")
-    sed_aligner = sed.StochasticEditDistance.fit_from_data(
-        training_data.samples, em_iterations=args.sed_em_iterations,
-        output_path=sed_parameters_path)
+    if args.sed_params is not None:
+        sed_aligner = sed.StochasticEditDistance.from_pickle(
+            args.sed_params)
+    else:
+        sed_parameters_path = os.path.join(args.output, "sed.pkl")
+        sed_aligner = sed.StochasticEditDistance.fit_from_data(
+            training_data.samples, em_iterations=args.sed_em_iterations,
+            output_path=sed_parameters_path)
     expert = optimal_expert_substitutions.OptimalSubstitutionExpert(sed_aligner)
 
     transducer_ = transducer.Transducer(vocabulary_, expert, args)
@@ -355,6 +359,8 @@ if __name__ == "__main__":
                         help="Scheduler used in training.")
     parser.add_argument("--sed-em-iterations", type=int, default=10,
                         help="SED EM iterations.")
+    parser.add_argument("--sed-params", type=str,
+                        help="Path to learned SED parameters.")
     parser.add_argument("--device", type=str, default='cpu',
                         help="Device to run training on.")
 
