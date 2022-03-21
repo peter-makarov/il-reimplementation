@@ -127,7 +127,7 @@ class StochasticEditDistance(actions.Aligner):
 
     @classmethod
     def from_pickle(cls, path2pkl: str):
-        logging.info("Loading sed channel parameters from file: ", path2pkl)
+        logging.info("Loading sed channel parameters from file: %s", path2pkl)
         with open(path2pkl, "rb") as w:
             params: ParamDict = pickle.load(w)
         return cls(params)
