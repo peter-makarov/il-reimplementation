@@ -307,7 +307,7 @@ def main(args: argparse.Namespace):
                 greedy_decoding = decode(transducer_, data)
             utils.write_results(greedy_decoding.accuracy,
                                 greedy_decoding.predictions, args.output,
-                                args.nfd, dataset_name, dargs=dargs)
+                                args.nfd, dataset_name, dargs=vars(args))
 
 
 if __name__ == "__main__":
