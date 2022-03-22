@@ -40,7 +40,7 @@ class Hypothesis:
     action_history: torch.tensor
     alignment: torch.tensor
     decoder: Tuple[torch.tensor, torch.tensor]
-    negative_log_p: float
+    negative_log_p: torch.tensor
     output: List[str]
 
 
@@ -311,7 +311,13 @@ class Transducer(torch.nn.Module):
         Returns:
             Encoder output."""
         input_emb = torch.transpose(self.input_embedding(encoded_input, is_training), 0, 1)
-        bidirectional_emb, _ = self.enc(input_emb)  # L x B x E
+
+        # encoder input: L x B x E
+        if isinstance(self.enc, ENCODER_MAPPING['transformer']):
+            bidirectional_emb, _ = self.enc(input_emb,
+                                            src_key_padding_mask=(encoded_input == PAD))
+        else:
+            bidirectional_emb, _ = self.enc(input_emb)
 
         return bidirectional_emb[1:]  # drop BEGIN_WORD
 
@@ -543,6 +549,9 @@ class Transducer(torch.nn.Module):
         Returns:
             A list holding the output of the best search paths.
         """
+        # adjust initial decoder states if batch_size has changed
+        self.h0_c0 = 1  # nothing else possible at the moment
+
         # run encoder
         bidirectional_emb = self.encoder_step(encoded_input)
         input_length = len(bidirectional_emb)
@@ -551,7 +560,7 @@ class Transducer(torch.nn.Module):
             Hypothesis(action_history=torch.tensor([[BEGIN_WORD]], device=self.device),
                        alignment=torch.tensor([0], device=self.device),
                        decoder=self.h0_c0,
-                       negative_log_p=0.,
+                       negative_log_p=torch.tensor(0., device=self.device),
                        output=[])]
 
         hypothesis_length = 0
@@ -601,9 +610,9 @@ class Transducer(torch.nn.Module):
                 if isinstance(action, EndOfSequence):
                     # 1. COMPLETE HYPOTHESIS, REDUCE BEAM
                     complete_hypothesis = Output(
-                        action_history=action_history,
-                        output=["".join(output)],
-                        log_p=-expansion.negative_log_p)  # undo min heap minus
+                        action_history=action_history.squeeze(dim=1).tolist()[1:],
+                        output="".join(output),
+                        log_p=-expansion.negative_log_p.item())  # undo min heap minus
 
                     complete_hypotheses.append(complete_hypothesis)
                     beam_width -= 1
@@ -631,9 +640,9 @@ class Transducer(torch.nn.Module):
             for hypothesis in beam:
 
                 complete_hypothesis = Output(
-                    action_history=hypothesis.action_history,
-                    output=["".join(hypothesis.output)],
-                    log_p=-hypothesis.negative_log_p)  # undo min heap minus
+                    action_history=hypothesis.action_history.squeeze(dim=1).tolist()[1:],
+                    output="".join(hypothesis.output),
+                    log_p=-hypothesis.negative_log_p.item())  # undo min heap minus
 
                 complete_hypotheses.append(complete_hypothesis)
 

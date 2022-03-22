@@ -23,12 +23,21 @@ random.seed(1)
 def decode(transducer_: transducer.Transducer, data_loader: torch.utils.data.DataLoader,
            beam_width: int = 1) -> utils.DecodingOutput:
     if beam_width == 1:
-        decoding = lambda s: \
-            transducer_.transduce(s.input, s.encoded_input)
+        decoding = lambda b: \
+            transducer_.transduce(b.input, b.encoded_input)
     else:
-        decoding = lambda s: \
-            transducer_.beam_search_decode(s.input, s.encoded_input,
-                                           beam_width)[0]
+        def decoding(b):
+            final_output = transducer.Output([], [], 0)
+            for s in range(len(b.input)):
+                o = transducer_.beam_search_decode(b.input[s], b.encoded_input[s].unsqueeze(dim=0),
+                                                   beam_width)[0]
+                final_output.action_history.append(o.action_history)
+                final_output.output.append(o.output)
+                final_output.log_p += o.log_p
+            final_output.log_p /= len(b.input)
+
+            return final_output
+
     predictions = []
     loss = 0
     correct = 0
@@ -146,7 +155,7 @@ def main(args: argparse.Namespace):
                                          device=args.device)
             sample = utils.Sample(input_, target, encoded_input)
             development_data.add_samples(sample)
-    development_data_loader = development_data.get_data_loader()
+    development_data_loader = development_data.get_data_loader(batch_size=args.batch_size)
 
     if args.test is not None:
         test_data = utils.Dataset()
@@ -158,7 +167,7 @@ def main(args: argparse.Namespace):
                                              device=args.device)
                 sample = utils.Sample(input_, target, encoded_input)
                 test_data.add_samples(sample)
-        test_data_loader = test_data.get_data_loader()
+        test_data_loader = test_data.get_data_loader(batch_size=args.batch_size)
 
     if args.sed_params is not None:
         sed_aligner = sed.StochasticEditDistance.from_pickle(
@@ -172,12 +181,18 @@ def main(args: argparse.Namespace):
 
     transducer_ = transducer.Transducer(vocabulary_, expert, args)
 
+    widgets = [progressbar.Bar(">"), " ", progressbar.ETA()]
+
     # precompute from expert
-    for s in training_data.samples:
+    logging.info("Precomputing optimal actions for training samples.")
+    precompute_progress_bar = progressbar.ProgressBar(
+        widgets=widgets, maxval=len(training_data.samples)
+    ).start()
+    for i, s in enumerate(training_data.samples):
         precompute_from_expert(s, transducer_)
+        precompute_progress_bar.update(i)
     training_data_loader = training_data.get_data_loader(is_training=True, batch_size=args.batch_size)
 
-    widgets = [progressbar.Bar(">"), " ", progressbar.ETA()]
     train_progress_bar = progressbar.ProgressBar(
         widgets=widgets, maxval=args.epochs).start()
 
@@ -191,7 +206,7 @@ def main(args: argparse.Namespace):
     scheduler = None
     if args.scheduler:
         scheduler = LR_SCHEDULER_MAPPING[args.scheduler](optimizer, args)
-    train_subset_loader = utils.Dataset(training_data.samples[:100]).get_data_loader()
+    train_subset_loader = utils.Dataset(training_data.samples[:100]).get_data_loader(batch_size=args.batch_size)
     # rollin_schedule = inverse_sigmoid_schedule(args.k)
     max_patience = args.patience
 
@@ -348,7 +363,7 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=60,
                         help="Maximal number of training epochs.")
     parser.add_argument("--batch-size", type=int, default=5,
-                        help="Batch size.")
+                        help="Batch size for training and evaluation.")
     parser.add_argument("--grad-accumulation", type=int, default=1,
                         help="Gradient accumulation.")
     parser.add_argument("--optimizer", type=str, default="adadelta",
