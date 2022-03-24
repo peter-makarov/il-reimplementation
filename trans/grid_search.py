@@ -31,7 +31,7 @@ def last_value_from_file(file_path: str, t=float):
 
 
 def get_list(var):
-    return var if isinstance(var, list) else list(var)
+    return var if isinstance(var, list) else [var]
 
 
 def file_name_from_pattern(pattern: str, lang: str, split: str):
