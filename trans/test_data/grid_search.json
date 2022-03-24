@@ -1,0 +1,24 @@
+{
+  "data": {
+    "path": "data/path",
+    "pattern": "LANG_SPLIT.tsv",
+    "languages": ["test_lang"]
+  },
+  "runs_per_model": 3,
+  "grids": {
+    "adam": {
+      "pytorch-seed": [42],
+      "enc-type": ["transformer"],
+      "enc-layers": [4],
+      "enc-nhead": [2],
+      "enc-dim-feedforward": [512],
+      "char-dim": [100],
+      "batch-size": [256],
+      "nfd": [""],
+      "epochs": [100],
+      "patience": [30],
+      "optimizer": ["adam"],
+      "lr": [0.01]
+    }
+  }
+}
