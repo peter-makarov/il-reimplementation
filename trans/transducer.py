@@ -554,7 +554,7 @@ class Transducer(torch.nn.Module):
 
         # run encoder
         bidirectional_emb = self.encoder_step(encoded_input)
-        input_length = len(bidirectional_emb)
+        input_length = len(input_) + 1  # +1 because of begin-of-seq-token
 
         beam: List[Hypothesis] = [
             Hypothesis(action_history=torch.tensor([[BEGIN_WORD]], device=self.device),
