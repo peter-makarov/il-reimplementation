@@ -127,32 +127,49 @@ def main(args: argparse.Namespace):
 
                 # get beam size
                 c_first_run = os.listdir(f"{output_path}/{c_dir}")[0]
-                match = re.search(r"beam[0-9]+", " ".join(os.listdir(f"{output_path}/{c_dir}/{c_first_run}")))
-                if not match:
-                    continue
-                beam_size = match[0]
+                beam_match = re.search(r"beam[0-9]+", " ".join(os.listdir(f"{output_path}/{c_dir}/{c_first_run}")))
+
+                # check if test files are evaluated
+                test_match = "test_greedy.eval" in " ".join(os.listdir(f"{output_path}/{c_dir}/{c_first_run}"))
 
                 c_dir_path = f"{output_path}/{c_dir}"
                 n_runs = len(os.listdir(c_dir_path))
                 for c_run in os.listdir(c_dir_path):
-                    # dev
+                    # dev greedy
                     dev_greedy_avg += last_value_from_file(f"{c_dir_path}/{c_run}/dev_greedy.eval")/n_runs
-                    dev_beam_avg += last_value_from_file(f"{c_dir_path}/{c_run}/dev_{beam_size}.eval")/n_runs
-                    # test
-                    test_greedy_avg += last_value_from_file(f"{c_dir_path}/{c_run}/test_greedy.eval")/n_runs
-                    test_beam_avg += last_value_from_file(f"{c_dir_path}/{c_run}/test_{beam_size}.eval")/n_runs
 
-                results.append((
-                    c_dir,
-                    (round(dev_beam_avg, 4), round(dev_greedy_avg, 4)),
-                    (round(test_beam_avg, 4), round(test_greedy_avg, 4))
-                ))
+                    # dev beam
+                    if beam_match:
+                        dev_beam_avg += last_value_from_file(f"{c_dir_path}/{c_run}/dev_{beam_match[0]}.eval")/n_runs
+
+                    if test_match:
+                        # test greedy
+                        test_greedy_avg += last_value_from_file(f"{c_dir_path}/{c_run}/test_greedy.eval")/n_runs
+                        # test beam
+                        if beam_match:
+                            test_beam_avg += last_value_from_file(f"{c_dir_path}/{c_run}/test_{beam_match[0]}.eval")/n_runs
+
+                result = {
+                    'c_dir': c_dir,
+                    'dev_greedy': dev_greedy_avg,
+                    'dev_beam': dev_beam_avg if beam_match else None,
+                    'test_greedy': test_greedy_avg if test_match else None,
+                    'test_beam': test_beam_avg if test_match and beam_match else None
+                }
+                results.append(result)
 
             with open(f"{args.output}/{name}/{lang}/results.txt", "w") as f:
-                for r in sorted(results, key=lambda x: x[1][0], reverse=True):
-                    f.write(r[0]+"\n")
-                    f.write(f"dev\nbeam: {r[1][0]}\ngreedy: {r[1][1]}\n")
-                    f.write(f"test\nbeam: {r[2][0]}\ngreedy: {r[2][1]}\n\n")
+                for r in sorted(results, key=lambda x: x['dev_greedy'], reverse=True):
+                    f.write(r['c_dir']+"\n")
+                    f.write(f"dev\ngreedy: {r['dev_greedy']}\n")
+                    if r['dev_beam']:
+                        f.write(f"beam: {r['dev_beam']}\n")
+                    if r['test_greedy']:
+                        f.write(f"test\ngreedy: {r['test_greedy']}\n")
+                    if r['test_beam']:
+                        f.write(f"beam: {r['test_beam']}\n\n")
+                    else:
+                        f.write("\n")
 
 
 if __name__ == "__main__":
