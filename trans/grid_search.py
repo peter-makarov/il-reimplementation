@@ -151,10 +151,10 @@ def main(args: argparse.Namespace):
 
                 result = {
                     'c_dir': c_dir,
-                    'dev_greedy': dev_greedy_avg,
-                    'dev_beam': dev_beam_avg if beam_match else None,
-                    'test_greedy': test_greedy_avg if test_match else None,
-                    'test_beam': test_beam_avg if test_match and beam_match else None
+                    'dev_greedy': round(dev_greedy_avg, 4),
+                    'dev_beam': round(dev_beam_avg, 4) if beam_match else None,
+                    'test_greedy': round(test_greedy_avg, 4) if test_match else None,
+                    'test_beam': round(test_beam_avg, 4) if test_match and beam_match else None
                 }
                 results.append(result)
 
