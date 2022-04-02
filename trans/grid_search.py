@@ -61,6 +61,8 @@ def main(args: argparse.Namespace):
                 par_name, par_value = j
                 if isinstance(par_value, bool) and par_value:
                     parsed_args.append(f"--{par_name}")
+                elif par_name == 'sed-params':
+                    continue
                 else:
                     parsed_args.extend([f"--{par_name}", str(par_value)])
                 args_dict[par_name] = par_value
@@ -76,6 +78,13 @@ def main(args: argparse.Namespace):
                 for j in range(1, config_dict["runs_per_model"]+1):
                     output = f"{args.output}/{name}/{lang}/{i}/{i}.{j}"
 
+                    if 'sed-params' in grid_config and lang in grid_config['sed-params']:
+                        args_.extend(
+                            [
+                                "--sed-params", grid_config['sed-params'][lang]
+                            ]
+                        )
+
                     # create file names from pattern
                     train_file = file_name_from_pattern(config_dict['data']['pattern'], lang, 'train')
                     dev_file = file_name_from_pattern(config_dict['data']['pattern'], lang, 'dev')
@@ -86,15 +95,18 @@ def main(args: argparse.Namespace):
                     test = f"{config_dict['data']['path']}/{test_file}"
 
                     args_.extend(
-                        ["--output", output,
-                         "--train", train,
-                         "--dev", dev
+                        [
+                            "--output", output,
+                            "--train", train,
+                            "--dev", dev
                          ]
                     )
 
                     if os.path.exists(test):
                         args_.extend(
-                            ["--test", test]
+                            [
+                                "--test", test
+                            ]
                         )
 
                     p = subprocess.Popen(["python", "trans/train.py"]+args_)
