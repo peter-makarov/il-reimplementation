@@ -308,14 +308,15 @@ def main(args: argparse.Namespace):
         if args.test is not None:
             evaluations.append((test_data_loader, "test"))
         for data, dataset_name in evaluations:
-            logging.info("Evaluating best model on %s data using beam search "
-                         "(beam width %d)...", dataset_name, args.beam_width)
-            with utils.Timer():
-                beam_decoding = decode(transducer_, data, args.beam_width)
-            utils.write_results(beam_decoding.accuracy,
-                                beam_decoding.predictions, args.output,
-                                args.nfd, dataset_name, args.beam_width,
-                                dargs=vars(args))
+            if args.beam_width > 0:
+                logging.info("Evaluating best model on %s data using beam search "
+                             "(beam width %d)...", dataset_name, args.beam_width)
+                with utils.Timer():
+                    beam_decoding = decode(transducer_, data, args.beam_width)
+                utils.write_results(beam_decoding.accuracy,
+                                    beam_decoding.predictions, args.output,
+                                    args.nfd, dataset_name, args.beam_width,
+                                    dargs=vars(args))
             logging.info("Evaluating best model on %s data using greedy decoding"
                          , dataset_name)
             with utils.Timer():
@@ -355,7 +356,7 @@ if __name__ == "__main__":
     parser.add_argument("--dec-layers", type=int, default=1,
                         help="Number of decoder LSTM layers.")
     parser.add_argument("--beam-width", type=int, default=4,
-                        help="Beam width for beam search decoding.")
+                        help="Beam width for beam search decoding. A value < 1 will disable beam search decoding.")
     # parser.add_argument("--k", type=int, default=1,
     #                     help="k for inverse sigmoid rollin schedule.")
     parser.add_argument("--patience", type=int, default=12,
