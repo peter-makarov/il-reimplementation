@@ -9,6 +9,7 @@ import itertools
 import time
 import atexit
 import re
+from typing import Any, Optional, List
 
 
 BASH_EXECUTABLE = shutil.which("bash")
@@ -30,7 +31,7 @@ def last_value_from_file(file_path: str, t=float):
         return t(lines[-1].split()[-1])
 
 
-def get_list(var):
+def get_list(var: Any):
     return var if isinstance(var, list) else [var]
 
 
@@ -38,6 +39,30 @@ def file_name_from_pattern(pattern: str, lang: str, split: str):
     file_name = pattern.replace("LANG", lang)
     file_name = file_name.replace("SPLIT", split)
     return file_name
+
+
+def run_ensemble(gold: str, systems: List[str], output: str):
+    subprocess.Popen([
+        "python", "trans/ensembling.py",
+        "--gold", gold,
+        "--systems", *systems,
+        "--output", output
+    ]).wait()
+
+
+def write_to_results_file(results_file: str, results: List[dict], beam_width: Optional[str] = None):
+    with open(results_file, "w") as f:
+        for r in sorted(results, key=lambda x: x['dev_greedy'], reverse=True):
+            f.write(r['c_dir'] + "\n")
+            f.write(f"dev\ngreedy: {r['dev_greedy']}\n")
+            if r['dev_beam']:
+                f.write(f"{beam_width}: {r['dev_beam']}\n")
+            if r['test_greedy']:
+                f.write(f"test\ngreedy: {r['test_greedy']}\n")
+            if r['test_beam']:
+                f.write(f"{beam_width}: {r['test_beam']}\n\n")
+            else:
+                f.write("\n")
 
 
 def main(args: argparse.Namespace):
@@ -128,60 +153,87 @@ def main(args: argparse.Namespace):
         # check every few seconds
         time.sleep(5)
 
+    # evaluate: average of results per combination and ensemble
     for name, grid_config in config_dict["grids"].items():
         for lang in config_dict["data"]["languages"]:
 
-            results = []
+            results = []  # average of single models
+            ensemble_results = []  # ensemble results
             output_path = f"{args.output}/{name}/{lang}"
-            for c_dir in os.listdir(output_path):
+            dev_file =\
+                f"{config_dict['data']['path']}/{file_name_from_pattern(config_dict['data']['pattern'], lang, 'dev')}"
+            test_file =\
+                f"{config_dict['data']['path']}/{file_name_from_pattern(config_dict['data']['pattern'], lang, 'test')}"
+
+            # level: combination
+            for c_dir in os.listdir(output_path):  # c_dir == name of combination (number)
                 dev_beam_avg, dev_greedy_avg = 0, 0
                 test_beam_avg, test_greedy_avg = 0, 0
 
                 # get beam size
                 c_first_run = os.listdir(f"{output_path}/{c_dir}")[0]
                 beam_match = re.search(r"beam[0-9]+", " ".join(os.listdir(f"{output_path}/{c_dir}/{c_first_run}")))
+                beam_width = beam_match[0] if beam_match else None
 
                 # check if test files are evaluated
                 test_match = "test_greedy.eval" in " ".join(os.listdir(f"{output_path}/{c_dir}/{c_first_run}"))
 
-                c_dir_path = f"{output_path}/{c_dir}"
-                n_runs = len(os.listdir(c_dir_path))
+                # level: run per combination
+                c_dir_path = f"{output_path}/{c_dir}"  # directory of combination
+                n_runs = len(os.listdir(c_dir_path))  # number of runs for combination
                 for c_run in os.listdir(c_dir_path):
                     # dev greedy
                     dev_greedy_avg += last_value_from_file(f"{c_dir_path}/{c_run}/dev_greedy.eval")/n_runs
 
                     # dev beam
-                    if beam_match:
-                        dev_beam_avg += last_value_from_file(f"{c_dir_path}/{c_run}/dev_{beam_match[0]}.eval")/n_runs
+                    if beam_width:
+                        dev_beam_avg += last_value_from_file(f"{c_dir_path}/{c_run}/dev_{beam_width}.eval")/n_runs
 
                     if test_match:
                         # test greedy
                         test_greedy_avg += last_value_from_file(f"{c_dir_path}/{c_run}/test_greedy.eval")/n_runs
                         # test beam
-                        if beam_match:
-                            test_beam_avg += last_value_from_file(f"{c_dir_path}/{c_run}/test_{beam_match[0]}.eval")/n_runs
+                        if beam_width:
+                            test_beam_avg += last_value_from_file(f"{c_dir_path}/{c_run}/test_{beam_width}.eval")/n_runs
 
                 result = {
                     'c_dir': c_dir,
                     'dev_greedy': round(dev_greedy_avg, 4),
-                    'dev_beam': round(dev_beam_avg, 4) if beam_match else None,
+                    'dev_beam': round(dev_beam_avg, 4) if beam_width else None,
                     'test_greedy': round(test_greedy_avg, 4) if test_match else None,
-                    'test_beam': round(test_beam_avg, 4) if test_match and beam_match else None
+                    'test_beam': round(test_beam_avg, 4) if test_match and beam_width else None
                 }
                 results.append(result)
 
-            with open(f"{args.output}/{name}/{lang}/results.txt", "w") as f:
-                for r in sorted(results, key=lambda x: x['dev_greedy'], reverse=True):
-                    f.write(r['c_dir']+"\n")
-                    f.write(f"dev\ngreedy: {r['dev_greedy']}\n")
-                    if r['dev_beam']:
-                        f.write(f"beam: {r['dev_beam']}\n")
-                    if r['test_greedy']:
-                        f.write(f"test\ngreedy: {r['test_greedy']}\n")
-                    if r['test_beam']:
-                        f.write(f"beam: {r['test_beam']}\n\n")
-                    else:
-                        f.write("\n")
+                if args.ensemble:
+                    result = {
+                        'c_dir': c_dir,
+                        'dev_beam': None,
+                        'test_greedy': None,
+                        'test_beam': None
+                    }
+                    golds = [('dev', dev_file), ('test', test_file)] if test_match else [('dev', dev_file)]
+                    for split, gold_file in golds:
+                        systems =\
+                            [f"{c_dir_path}/{c_dir}.{i}/{split}_greedy.predictions" for i in range(1, n_runs+1)]
+                        # greedy
+                        run_ensemble(gold_file, systems, f"{c_dir_path}/greedy_ensemble")
+                        result[f"{split}_greedy"] =\
+                            round(last_value_from_file(f"{c_dir_path}/greedy_ensemble/{split}_{n_runs}ensemble.eval"), 4)
+                        # beam
+                        if beam_width:
+                            systems = \
+                                [f"{c_dir_path}/{c_dir}.{i}/{split}_{beam_width}.predictions" for i in range(1, n_runs + 1)]
+                            run_ensemble(gold_file, systems, f"{c_dir_path}/{beam_width}_ensemble")
+                            result[f"{split}_beam"] = \
+                                round(last_value_from_file(f"{c_dir_path}/{beam_width}_ensemble/{split}_{n_runs}ensemble.eval"), 4)
+                    ensemble_results.append(result)
+
+            # write to results text file
+            write_to_results_file(f"{args.output}/{name}/{lang}/results.txt", results, beam_width)
+
+            if args.ensemble:
+                write_to_results_file(f"{args.output}/{name}/{lang}/ensemble_results.txt", ensemble_results, beam_width)
 
 
 if __name__ == "__main__":
@@ -194,6 +246,8 @@ if __name__ == "__main__":
                         help="Path to output directory.")
     parser.add_argument("--parallel-jobs", type=int,
                         default=30, help="Max number of parallel trainings.")
+    parser.add_argument("--ensemble", action="store_true",
+                        help="Produce ensemble results.")
 
     args = parser.parse_args()
     main(args)
