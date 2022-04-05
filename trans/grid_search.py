@@ -101,10 +101,13 @@ def main(args: argparse.Namespace):
         for i, args_ in enumerate(args_list, 1):
             for lang in config_dict["data"]["languages"]:
                 for j in range(1, config_dict["runs_per_model"]+1):
+                    # reset ext_args
+                    ext_args = args_.copy()
+
                     output = f"{args.output}/{name}/{lang}/{i}/{i}.{j}"
 
                     if 'sed-params' in grid_config and lang in grid_config['sed-params']:
-                        args_.extend(
+                        ext_args.extend(
                             [
                                 "--sed-params", grid_config['sed-params'][lang]
                             ]
@@ -119,7 +122,7 @@ def main(args: argparse.Namespace):
                     dev = f"{config_dict['data']['path']}/{dev_file}"
                     test = f"{config_dict['data']['path']}/{test_file}"
 
-                    args_.extend(
+                    ext_args.extend(
                         [
                             "--output", output,
                             "--train", train,
@@ -128,13 +131,13 @@ def main(args: argparse.Namespace):
                     )
 
                     if os.path.exists(test):
-                        args_.extend(
+                        ext_args.extend(
                             [
                                 "--test", test
                             ]
                         )
 
-                    p = subprocess.Popen(["python", "trans/train.py"]+args_)
+                    p = subprocess.Popen(["python", "trans/train.py"]+ext_args)
                     process_list.append(p)
 
                     if len(process_list) < args.parallel_jobs:
