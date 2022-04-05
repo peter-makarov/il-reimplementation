@@ -6,19 +6,22 @@
   },
   "runs_per_model": 3,
   "grids": {
-    "adam": {
-      "pytorch-seed": [42],
-      "enc-type": ["transformer"],
-      "enc-layers": [4],
-      "enc-nhead": [2],
-      "enc-dim-feedforward": [512],
-      "char-dim": [100],
-      "batch-size": [256],
-      "nfd": [""],
-      "epochs": [100],
-      "patience": [30],
-      "optimizer": ["adam"],
-      "lr": [0.01]
+    "simple_lstm": {
+      "pytorch-seed": 42,
+      "nfd": true
+    },
+    "transformer": {
+      "pytorch-seed": 42,
+      "nfd": true,
+      "enc-type": "transformer",
+      "enc-layers": [2, 4],
+      "enc-nhead": 2,
+      "enc-dim-feedforward": [512, 1024],
+      "batch-size": 256,
+      "epochs": 100,
+      "patience": 30,
+      "optimizer": "adam",
+      "scheduler": "inv_sr"
     }
   }
 }

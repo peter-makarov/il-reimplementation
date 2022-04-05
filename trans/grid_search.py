@@ -144,10 +144,10 @@ def main(args: argparse.Namespace):
                         continue
 
                     while len(process_list) >= args.parallel_jobs:
-                        # check every few seconds
-                        time.sleep(5)
                         process_list = [p for p in process_list if p.poll() is
                                         None]
+                        # check every few seconds
+                        time.sleep(5)
 
     # all trainings in progress, stay in script so all processes can be aborted
     while len(process_list) > 0:
