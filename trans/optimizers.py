@@ -28,6 +28,28 @@ class Adam(torch.optim.Adam):
         parser.add_argument("--amsgrad", type=bool, default=False)
 
 
+@register_component('adamw', 'optimizer')
+class AdamW(torch.optim.AdamW):
+    """AdamW optimizer."""
+    def __init__(self, params, args: argparse.Namespace):
+        super().__init__(
+            params,
+            lr=args.lr,
+            betas=args.betas,
+            eps=args.eps,
+            weight_decay=args.weight_decay,
+            amsgrad=args.amsgrad
+        )
+
+    @staticmethod
+    def add_args(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument("--lr", type=float, default=0.001)
+        parser.add_argument("--betas", type=tuple, default=(0.9, 0.999))
+        parser.add_argument("--eps", type=float, default=1e-08)
+        parser.add_argument("--weight-decay", type=float, default=0)
+        parser.add_argument("--amsgrad", type=bool, default=False)
+
+
 @register_component('adadelta', 'optimizer')
 class Adadelta(torch.optim.Adadelta):
     """Adadelta optimizer."""
