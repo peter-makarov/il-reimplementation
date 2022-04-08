@@ -191,7 +191,7 @@ def main(args: argparse.Namespace):
     for i, s in enumerate(training_data.samples):
         precompute_from_expert(s, transducer_)
         precompute_progress_bar.update(i)
-    training_data_loader = training_data.get_data_loader(is_training=True, batch_size=args.batch_size)
+    training_data_loader = training_data.get_data_loader(is_training=True, batch_size=args.batch_size, shuffle=True)
 
     train_progress_bar = progressbar.ProgressBar(
         widgets=widgets, maxval=args.epochs).start()
