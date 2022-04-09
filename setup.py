@@ -30,7 +30,8 @@ setup(name="neural_transducer",
       entry_points={
           "console_scripts": [
               "trans-train = trans.train:cli_main",
-              "trans-ensemble = trans.ensembling:cli_main"
+              "trans-ensemble = trans.ensembling:cli_main",
+              "trans-grid-search = trans.grid_search:cli_main"
           ]
       },
       )

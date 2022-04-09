@@ -127,8 +127,6 @@ defined as following:
 }
 ```
 
-Additionally, a simple example can be found [here](https://github.com/slvnwhrl/il-reimplementation/blob/feature/grid-search/trans/docs/grid_search_config_schema.json).
-
 In principle, all parameter values can either be passed as a single value or 
 as an array of values. In any case, all possible combinations of all passed
 parameter values for a specific grid will be produced and used for training. However,

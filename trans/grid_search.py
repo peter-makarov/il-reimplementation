@@ -43,7 +43,7 @@ def file_name_from_pattern(pattern: str, lang: str, split: str):
 
 def run_ensemble(gold: str, systems: List[str], output: str):
     subprocess.Popen([
-        "python", "trans/ensembling.py",
+        "trans-ensemble"
         "--gold", gold,
         "--systems", *systems,
         "--output", output
@@ -137,7 +137,7 @@ def main(args: argparse.Namespace):
                             ]
                         )
 
-                    p = subprocess.Popen(["python", "trans/train.py"]+ext_args)
+                    p = subprocess.Popen(["trans-train"]+ext_args)
                     process_list.append(p)
 
                     if len(process_list) < args.parallel_jobs:
@@ -239,7 +239,7 @@ def main(args: argparse.Namespace):
                 write_to_results_file(f"{args.output}/{name}/{lang}/ensemble_results.txt", ensemble_results, beam_width)
 
 
-if __name__ == "__main__":
+def cli_main():
     parser = argparse.ArgumentParser(
         description="Grid search.")
 
@@ -254,3 +254,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main(args)
+
+
+if __name__ == "__main__":
+    cli_main()
