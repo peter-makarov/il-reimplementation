@@ -7,6 +7,7 @@ import time
 import re
 import unicodedata
 import torch
+import pickle
 from trans.vocabulary import PAD
 
 
@@ -87,6 +88,17 @@ class Dataset(torch.utils.data.Dataset):
             kwargs['collate_fn'] = collate
 
         return torch.utils.data.DataLoader(self, **kwargs)
+
+    def persist(self, filename: str):
+        with open(filename, mode="wb") as w:
+            pickle.dump(self.samples, w)
+
+    @classmethod
+    def from_pickle(cls, path2pkl: str):
+        logging.info("Loading precomputed training data from file: %s", path2pkl)
+        with open(path2pkl, "rb") as w:
+            params: List[Sample] = pickle.load(w)
+        return cls(params)
 
 
 @dataclasses.dataclass

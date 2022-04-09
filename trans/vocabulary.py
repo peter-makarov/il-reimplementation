@@ -1,5 +1,6 @@
 """Vocabularies."""
-from typing import Any, List, Iterable, Optional
+from typing import Any, List, Iterable, Optional, Dict
+import logging
 import pickle
 
 from trans.actions import BeginOfSequence, ConditionalCopy, ConditionalDel, \
@@ -114,6 +115,14 @@ class Vocabularies:
                         "actions": self.actions.to_i2w()}
         with open(filename, mode="wb") as w:
             pickle.dump(vocabularies, w)
+        logging.info("Wrote precomputed training data to %s.", filename)
+
+    @classmethod
+    def from_pickle(cls, path2pkl: str):
+        logging.info("Loading vocabulary from file: %s", path2pkl)
+        with open(path2pkl, "rb") as w:
+            params: Dict = pickle.load(w)
+        return cls(**params)
 
     @property
     def substitutions(self):
