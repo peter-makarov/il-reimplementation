@@ -14,7 +14,7 @@ To install this package, perform the following steps:
 
   * default installation
 
-        pip install
+        pip install .
   
   * with cuda support
         
@@ -22,7 +22,7 @@ To install this package, perform the following steps:
 
   * local development (without the need to reinstall the package after changes):
 
-        pip install -e ./
+        pip install -e .
 
 * Optionally, run unit tests:
 
