@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Grid search config",
+  "description": "Configuration file for grid-based search/optimization",
+  "type": "object",
+  "properties": {
+    "data": {
+      "description": "Information about the used data",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "The path to the training data",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "The pattern used to find the split- and language-specific data files. In the given path the words SPLIT and LANG will be replaced.",
+          "type": "string"
+        },
+        "languages": {
+          "description": "List of languages to train on",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "required": [
+      "path",
+      "pattern",
+      "languages"
+    ]
+  },
+  "runs_per_model": {
+    "description": "The number of models that are trained per possible combination of config parameters.",
+    "type": "integer"
+  },
+  "grids": {
+    "description": "This objects contains specification for named grids.",
+    "type": "object",
+    "patternProperties": {
+      "^.*$": {
+        "description": "This object represents a single grid and contains the model (hyper)parameters as key-value pairs. Note that values can either be passed as single values or as array of different values. An exception is the sed-params parameter which expects a object containing key-value pairs of languages and paths.",
+        "type": "object"
+      }
+    }
+  },
+  "required": [
+    "data",
+    "runs_per_model",
+    "grids"
+  ]
+}
