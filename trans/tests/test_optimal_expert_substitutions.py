@@ -17,7 +17,7 @@ class OptimalSubstitutionExpertTests(unittest.TestCase):
         cls.optimal_expert = \
             optimal_expert_substitutions.OptimalSubstitutionExpert(aligner)
         cls.test_fre = os.path.join(os.path.dirname(__file__),
-                                    "test_data/fre_train.tsv")
+                                    "../test_data/fre_train.tsv")
 
     def test_score_end(self):
         x = "walk"
