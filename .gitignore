@@ -1,0 +1,10 @@
+# PyCharm IDE
+.idea/
+
+__pycache__/
+
+# specifically for macOS
+.DS_Store
+
+# packaging
+*.egg

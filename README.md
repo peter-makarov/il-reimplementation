@@ -1,31 +1,49 @@
-# Neural transducer baseline
+# A G2P neural transducer
+This package contains a cli-based g2p neural transducer, similar to that used by Makarov & Clematide 2020.
 
-This package contains a g2p neural transducer baseline, similar to that used by Makarov & Clematide 2020.
+## Installation
+Please make sure that you are using Python 3.7.
+To install this package, perform the following steps:
 
-Please make sure that you are using Python3.7.
-To run this in a Python virtual environment, perform the following steps:
+* Clone the development branch and change to the package directory:
 
-* Clone this branch and change to the package directory:
-
-        git clone --single-branch -b feature/sgm2021 https://github.com/peter-makarov/il-reimplementation.git neural_transducer
+        git clone --single-branch -b development https://github.com/slvnwhrl/il-reimplementation.git neural_transducer
         cd neural_transducer
 
-* Create and activate an environment:
+* Install the package:
 
-        python3.7 -m venv venv
-        source venv/bin/activate
+  * default installation
 
-* Install the requirements:
+        pip install
+  
+  * with cuda support
+        
+        pip install --cuda
 
-        pip install -U pip
-        pip install -r requirements.txt
+  * local development (without the need to reinstall the package after changes):
+
+        pip install -e ./
 
 * Optionally, run unit tests:
 
         python setup.py test
 
-* Train the models and decode. This will take a while.
+## Usage
+### Training
+In order to train a model, directly run the python script ``train.py`` 
+via ``python train.py`` or use the cli entry point ``trans-train``.
 
-        ./sweep
+The most important (and required) parameters are:
+* ``--train`` path to the training data
+* ``--dev`` path to the development data
+* ``--output`` path to the output directory
 
-Results will appear in the `output` directory.
+For a full list of available training configurations, use ``trans-train --help``.
+
+### Ensembling
+To ensemble a number of models based on majority voting, run the python script 
+``ensembling.py`` via ``python ensembling.py`` or use the cli entry point 
+``trans-ensemble``. The following parameters are required:
+* ``--gold`` path to the gold data
+* ``--systems`` path to the systems' data
+* ``--output`` path to the output directory
