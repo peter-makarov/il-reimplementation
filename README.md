@@ -19,7 +19,7 @@ the available parameters.
 #### Configuration file
 The JSON-based configuration file needs to be passed via ``--config`` parameter.
 It basically contains information about the used data as well as model (hyper)parameters.
-An example can be found in the test_data folder. The schema for the JSON file is
+An [example](trans/docs/grid_search_config_example.json) can be found in the docs folder. The schema for the JSON file is
 defined as following:
 
 ```
