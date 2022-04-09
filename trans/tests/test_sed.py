@@ -6,7 +6,7 @@ import numpy as np
 
 from trans.actions import Sub, Ins
 from trans import sed
-from trans import test_optimal_expert_substitutions
+from trans.tests import test_optimal_expert_substitutions
 
 
 class TestTransducer(unittest.TestCase):

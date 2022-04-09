@@ -69,8 +69,7 @@ def main(args: argparse.Namespace):
         dargs=args.__dict__)
 
 
-if __name__ == "__main__":
-
+def cli_main():
     logging.basicConfig(level="INFO", format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
@@ -84,3 +83,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     main(args)
+
+
+if __name__ == "__main__":
+    cli_main()
