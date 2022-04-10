@@ -119,7 +119,7 @@ def main(args: argparse.Namespace):
 
     os.makedirs(args.output)
 
-    if args.pytorch_seed:
+    if args.pytorch_seed is not None:
         torch.manual_seed(args.pytorch_seed)
 
     if args.nfd:
@@ -127,7 +127,7 @@ def main(args: argparse.Namespace):
     else:
         logging.info("Will perform training on unnormalized data.")
 
-    if args.vocabulary:
+    if args.vocabulary is not None:
         vocabulary_ = vocabulary.Vocabularies.from_pickle(args.vocabulary)
         logging.info("%d actions: %s", len(vocabulary_.actions),
                      vocabulary_.actions)
@@ -136,7 +136,7 @@ def main(args: argparse.Namespace):
     else:
         vocabulary_ = vocabulary.Vocabularies()
 
-    if args.precomputed_train:
+    if args.precomputed_train is not None:
         training_data = utils.Dataset.from_pickle(args.precomputed_train)
     else:
         training_data = utils.Dataset()
@@ -220,7 +220,7 @@ def main(args: argparse.Namespace):
 
     optimizer = OPTIMIZER_MAPPING[args.optimizer](transducer_.parameters(), args)
     scheduler = None
-    if args.scheduler:
+    if args.scheduler is not None:
         scheduler = LR_SCHEDULER_MAPPING[args.scheduler](optimizer, args)
     train_subset_loader = utils.Dataset(training_data.samples[:100]).get_data_loader(batch_size=args.batch_size)
     # rollin_schedule = inverse_sigmoid_schedule(args.k)
@@ -255,7 +255,7 @@ def main(args: argparse.Namespace):
                 losses.sum().backward()
                 if j % args.grad_accumulation == 0:
                     optimizer.step()
-                    if scheduler:
+                    if scheduler is not None and scheduler.type == 'step':
                         scheduler.step()
                     transducer_.zero_grad()
                 if j > 0 and j % 100 == 0:
@@ -282,6 +282,9 @@ def main(args: argparse.Namespace):
                 decoding_output = decode(transducer_, development_data_loader)
                 dev_accuracy = decoding_output.accuracy
                 avg_dev_loss = decoding_output.loss
+
+        if scheduler is not None and scheduler.type == 'metric':
+            scheduler.step(dev_accuracy)
 
         if dev_accuracy > best_dev_accuracy:
             best_dev_accuracy = dev_accuracy
@@ -356,7 +359,7 @@ if __name__ == "__main__":
     parser.add_argument("--precomputed-train", type=str,
                         help="Path to precomputed train set data. "
                              "If provided, --vocabulary option must be provided, as well.")
-    parser.add_argument("--save-precomputed-train", type=bool, default=False,
+    parser.add_argument("--save-precomputed-train", action="store_true", default=False,
                         help="Store the precomputed training set (i.e., containing the expert's information needed"
                              "for training). Can be used to speed up the training process for large datasets.")
     parser.add_argument("--vocabulary", type=str,
@@ -368,7 +371,7 @@ if __name__ == "__main__":
                         help="Path to development set data.")
     parser.add_argument("--output", type=str, required=True,
                         help="Output directory.")
-    parser.add_argument("--nfd", action="store_true",
+    parser.add_argument("--nfd", action="store_true", default=False,
                         help="Train on NFD-normalized data. Write out in NFC.")
     parser.add_argument("--char-dim", type=int, default=100,
                         help="Character peak_embedding dimension.")
@@ -411,15 +414,17 @@ if __name__ == "__main__":
     # custom logic for handling mutually inclusive/exclusive set of options
     # --> train, precomputed_train and vocabulary
     # train is required
-    if not args.train and not (args.precomputed_train and args.vocabulary):
+    if args.train is None and \
+            (args.precomputed_train is None and args.vocabulary is None):
         parser.error("--train is required if --precomputed-train and --vocabulary is not provided.")
     # precomputed_train and vocabulary is required
-    elif not args.train and\
-            ((args.precomputed_train and not args.vocabulary) or (not args.precomputed_train and args.vocabulary)):
+    elif args.train is None and \
+            (args.precomputed_train is None or args.vocabulary is None):
         parser.error("--precomputed_train and --vocabulary must both be specified, if one of them is provided "
                      "(mutually inclusive).")
     # precomputed_train and vocabulary not allowed
-    elif args.train and (args.precomputed_train and args.vocabulary):
+    elif args.train is not None and \
+            args.precomputed_train is not None and args.vocabulary is not None:
         parser.error("If --train is specified, --precomputed-train and --vocabulary should not be provided.")
 
     # encoder-specific configs

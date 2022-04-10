@@ -92,6 +92,7 @@ class Dataset(torch.utils.data.Dataset):
     def persist(self, filename: str):
         with open(filename, mode="wb") as w:
             pickle.dump(self.samples, w)
+        logging.info("Wrote precomputed training data to %s.", filename)
 
     @classmethod
     def from_pickle(cls, path2pkl: str):

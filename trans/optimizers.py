@@ -74,6 +74,7 @@ class Adadelta(torch.optim.Adadelta):
 class InvSRScheduler(torch.optim.lr_scheduler._LRScheduler):
     """Inverse square root scheduler."""
     def __init__(self, optimizer: torch.optim, args: argparse.Namespace):
+        self.type = 'step'
         self.warmup_steps = args.warmup_steps
         lr = optimizer.param_groups[0]['lr']
         self.init_lr = args.warmup_init_lr if args.warmup_steps > 0 else lr
@@ -105,6 +106,7 @@ class InvSRScheduler(torch.optim.lr_scheduler._LRScheduler):
 class ReduceLROnPlateau(torch.optim.lr_scheduler.ReduceLROnPlateau):
     """Scheduler for reducing learning rate on plateau."""
     def __init__(self, optimizer: torch.optim, args: argparse.Namespace):
+        self.type = 'metric'
         super().__init__(
             optimizer=args.optimizer,
             mode=args.mode,

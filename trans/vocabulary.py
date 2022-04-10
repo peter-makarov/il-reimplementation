@@ -115,7 +115,6 @@ class Vocabularies:
                         "actions": self.actions.to_i2w()}
         with open(filename, mode="wb") as w:
             pickle.dump(vocabularies, w)
-        logging.info("Wrote precomputed training data to %s.", filename)
 
     @classmethod
     def from_pickle(cls, path2pkl: str):
