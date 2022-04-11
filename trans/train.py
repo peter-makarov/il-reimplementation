@@ -436,7 +436,7 @@ if __name__ == "__main__":
     OPTIMIZER_MAPPING[args.optimizer].add_args(optimizer_group)
 
     # scheduler-specific configs
-    if args.scheduler:
+    if args.scheduler is not None:
         scheduler_group = parser.add_argument_group("LR scheduler specific configuration")
         LR_SCHEDULER_MAPPING[args.scheduler].add_args(scheduler_group)
 

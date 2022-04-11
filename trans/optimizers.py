@@ -102,7 +102,7 @@ class InvSRScheduler(torch.optim.lr_scheduler._LRScheduler):
         parser.add_argument("--verbose", type=bool, default=False)
 
 
-@register_component('', 'lr_scheduler')
+@register_component('reduce_on_plateau', 'lr_scheduler')
 class ReduceLROnPlateau(torch.optim.lr_scheduler.ReduceLROnPlateau):
     """Scheduler for reducing learning rate on plateau."""
     def __init__(self, optimizer: torch.optim, args: argparse.Namespace):
