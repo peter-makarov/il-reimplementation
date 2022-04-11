@@ -119,7 +119,7 @@ def main(args: argparse.Namespace):
 
     os.makedirs(args.output)
 
-    if args.pytorch_seed:
+    if args.pytorch_seed is not None:
         torch.manual_seed(args.pytorch_seed)
 
     if args.nfd:
@@ -127,25 +127,35 @@ def main(args: argparse.Namespace):
     else:
         logging.info("Will perform training on unnormalized data.")
 
-    vocabulary_ = vocabulary.Vocabularies()
+    if args.vocabulary is not None:
+        vocabulary_ = vocabulary.Vocabularies.from_pickle(args.vocabulary)
+        logging.info("%d actions: %s", len(vocabulary_.actions),
+                     vocabulary_.actions)
+        logging.info("%d chars: %s", len(vocabulary_.characters),
+                     vocabulary_.characters)
+    else:
+        vocabulary_ = vocabulary.Vocabularies()
 
-    training_data = utils.Dataset()
-    with utils.OpenNormalize(args.train, args.nfd) as f:
-        for line in f:
-            input_, target = line.rstrip().split("\t", 1)
-            encoded_input = torch.tensor(vocabulary_.encode_input(input_),
-                                         device=args.device)
-            vocabulary_.encode_actions(target)
-            sample = utils.Sample(input_, target, encoded_input)
-            training_data.add_samples(sample)
+    if args.precomputed_train is not None:
+        training_data = utils.Dataset.from_pickle(args.precomputed_train)
+    else:
+        training_data = utils.Dataset()
+        with utils.OpenNormalize(args.train, args.nfd) as f:
+            for line in f:
+                input_, target = line.rstrip().split("\t", 1)
+                encoded_input = torch.tensor(vocabulary_.encode_input(input_),
+                                             device=args.device)
+                vocabulary_.encode_actions(target)
+                sample = utils.Sample(input_, target, encoded_input)
+                training_data.add_samples(sample)
 
-    logging.info("%d actions: %s", len(vocabulary_.actions),
-                 vocabulary_.actions)
-    logging.info("%d chars: %s", len(vocabulary_.characters),
-                 vocabulary_.characters)
-    vocabulary_path = os.path.join(args.output, "vocabulary.pkl")
-    vocabulary_.persist(vocabulary_path)
-    logging.info("Wrote vocabulary to %s.", vocabulary_path)
+        logging.info("%d actions: %s", len(vocabulary_.actions),
+                     vocabulary_.actions)
+        logging.info("%d chars: %s", len(vocabulary_.characters),
+                     vocabulary_.characters)
+        vocabulary_path = os.path.join(args.output, "vocabulary.pkl")
+        vocabulary_.persist(vocabulary_path)
+        logging.info("Wrote vocabulary to %s.", vocabulary_path)
 
     development_data = utils.Dataset()
     with utils.OpenNormalize(args.dev, args.nfd) as f:
@@ -184,14 +194,20 @@ def main(args: argparse.Namespace):
     widgets = [progressbar.Bar(">"), " ", progressbar.ETA()]
 
     # precompute from expert
-    logging.info("Precomputing optimal actions for training samples.")
-    precompute_progress_bar = progressbar.ProgressBar(
-        widgets=widgets, maxval=len(training_data.samples)
-    ).start()
-    for i, s in enumerate(training_data.samples):
-        precompute_from_expert(s, transducer_)
-        precompute_progress_bar.update(i)
-    training_data_loader = training_data.get_data_loader(is_training=True, batch_size=args.batch_size)
+    if not args.precomputed_train:
+        logging.info("Precomputing optimal actions for training samples.")
+        precompute_progress_bar = progressbar.ProgressBar(
+            widgets=widgets, maxval=len(training_data.samples)
+        ).start()
+        for i, s in enumerate(training_data.samples):
+            precompute_from_expert(s, transducer_)
+            precompute_progress_bar.update(i)
+
+        if args.save_precomputed_train:
+            precomputed_train_path = os.path.join(args.output, "precomputed_train.pkl")
+            training_data.persist(precomputed_train_path)
+
+    training_data_loader = training_data.get_data_loader(is_training=True, batch_size=args.batch_size, shuffle=True)
 
     train_progress_bar = progressbar.ProgressBar(
         widgets=widgets, maxval=args.epochs).start()
@@ -204,7 +220,7 @@ def main(args: argparse.Namespace):
 
     optimizer = OPTIMIZER_MAPPING[args.optimizer](transducer_.parameters(), args)
     scheduler = None
-    if args.scheduler:
+    if args.scheduler is not None:
         scheduler = LR_SCHEDULER_MAPPING[args.scheduler](optimizer, args)
     train_subset_loader = utils.Dataset(training_data.samples[:100]).get_data_loader(batch_size=args.batch_size)
     # rollin_schedule = inverse_sigmoid_schedule(args.k)
@@ -239,7 +255,7 @@ def main(args: argparse.Namespace):
                 losses.sum().backward()
                 if j % args.grad_accumulation == 0:
                     optimizer.step()
-                    if scheduler:
+                    if scheduler is not None and scheduler.type == 'step':
                         scheduler.step()
                     transducer_.zero_grad()
                 if j > 0 and j % 100 == 0:
@@ -266,6 +282,9 @@ def main(args: argparse.Namespace):
                 decoding_output = decode(transducer_, development_data_loader)
                 dev_accuracy = decoding_output.accuracy
                 avg_dev_loss = decoding_output.loss
+
+        if scheduler is not None and scheduler.type == 'metric':
+            scheduler.step(dev_accuracy)
 
         if dev_accuracy > best_dev_accuracy:
             best_dev_accuracy = dev_accuracy
@@ -334,15 +353,25 @@ def cli_main():
 
     parser.add_argument("--pytorch-seed", type=int,
                         help="Random seed used by PyTorch.")
-    parser.add_argument("--train", type=str, required=True,
-                        help="Path to train set data.")
+    parser.add_argument("--train", type=str,
+                        help="Path to train set data. Only required if --precomputed-train and --vocabulary is not"
+                             "provided.")
+    parser.add_argument("--precomputed-train", type=str,
+                        help="Path to precomputed train set data. "
+                             "If provided, --vocabulary option must be provided, as well.")
+    parser.add_argument("--save-precomputed-train", action="store_true", default=False,
+                        help="Store the precomputed training set (i.e., containing the expert's information needed"
+                             "for training). Can be used to speed up the training process for large datasets.")
+    parser.add_argument("--vocabulary", type=str,
+                        help="Path to the vocabulary. "
+                             "If provided, --precomputed-train must be provided, as well.")
     parser.add_argument("--dev", type=str, required=True,
                         help="Path to development set data.")
     parser.add_argument("--test", type=str,
                         help="Path to development set data.")
     parser.add_argument("--output", type=str, required=True,
                         help="Output directory.")
-    parser.add_argument("--nfd", action="store_true",
+    parser.add_argument("--nfd", action="store_true", default=False,
                         help="Train on NFD-normalized data. Write out in NFC.")
     parser.add_argument("--char-dim", type=int, default=100,
                         help="Character peak_embedding dimension.")
@@ -382,6 +411,22 @@ def cli_main():
 
     args, _ = parser.parse_known_args()
 
+    # custom logic for handling mutually inclusive/exclusive set of options
+    # --> train, precomputed_train and vocabulary
+    # train is required
+    if args.train is None and \
+            (args.precomputed_train is None and args.vocabulary is None):
+        parser.error("--train is required if --precomputed-train and --vocabulary is not provided.")
+    # precomputed_train and vocabulary is required
+    elif args.train is None and \
+            (args.precomputed_train is None or args.vocabulary is None):
+        parser.error("--precomputed_train and --vocabulary must both be specified, if one of them is provided "
+                     "(mutually inclusive).")
+    # precomputed_train and vocabulary not allowed
+    elif args.train is not None and \
+            args.precomputed_train is not None and args.vocabulary is not None:
+        parser.error("If --train is specified, --precomputed-train and --vocabulary should not be provided.")
+
     # encoder-specific configs
     encoder_group = parser.add_argument_group("Encoder specific configuration")
     ENCODER_MAPPING[args.enc_type].add_args(encoder_group)
@@ -391,7 +436,7 @@ def cli_main():
     OPTIMIZER_MAPPING[args.optimizer].add_args(optimizer_group)
 
     # scheduler-specific configs
-    if args.scheduler:
+    if args.scheduler is not None:
         scheduler_group = parser.add_argument_group("LR scheduler specific configuration")
         LR_SCHEDULER_MAPPING[args.scheduler].add_args(scheduler_group)
 
