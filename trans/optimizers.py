@@ -108,8 +108,8 @@ class ReduceLROnPlateau(torch.optim.lr_scheduler.ReduceLROnPlateau):
     def __init__(self, optimizer: torch.optim, args: argparse.Namespace):
         self.type = 'metric'
         super().__init__(
-            optimizer=args.optimizer,
-            mode=args.mode,
+            optimizer=optimizer,
+            mode='max',
             factor=args.factor,
             patience=args.lrs_patience,
             threshold=args.threshold,
@@ -122,7 +122,6 @@ class ReduceLROnPlateau(torch.optim.lr_scheduler.ReduceLROnPlateau):
 
     @staticmethod
     def add_args(parser: argparse.ArgumentParser) -> None:
-        parser.add_argument("--mode", type=str, default='max')
         parser.add_argument("--factor", type=float, default=0.1)
         parser.add_argument("--lrs-patience", type=int, default=10)
         parser.add_argument("--threshold", type=float, default=1e-4)
