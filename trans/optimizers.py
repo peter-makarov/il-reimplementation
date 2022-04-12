@@ -127,6 +127,6 @@ class ReduceLROnPlateau(torch.optim.lr_scheduler.ReduceLROnPlateau):
         parser.add_argument("--threshold", type=float, default=1e-4)
         parser.add_argument("--threshold-mode", type=str, default='rel')
         parser.add_argument("--cooldown", type=int, default=0)
-        parser.add_argument("--min_lr", type=float, default=0.)
+        parser.add_argument("--min-lr", type=float, default=0.)
         parser.add_argument("--lrs-eps", type=float, default=1e-8)
         parser.add_argument("--verbose", type=bool, default=False)

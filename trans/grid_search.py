@@ -86,7 +86,7 @@ def main(args: argparse.Namespace):
                 par_name, par_value = j
                 if isinstance(par_value, bool) and par_value:
                     parsed_args.append(f"--{par_name}")
-                elif par_name == 'sed-params':
+                elif par_name in ['sed-params', 'precomputed-train', 'vocabulary']:
                     continue
                 else:
                     parsed_args.extend([f"--{par_name}", str(par_value)])
@@ -99,33 +99,40 @@ def main(args: argparse.Namespace):
 
         # train
         for i, args_ in enumerate(args_list, 1):
-            for lang in config_dict["data"]["languages"]:
-                for j in range(1, config_dict["runs_per_model"]+1):
+            for lang in config_dict['data']['languages']:
+                for j in range(1, config_dict['runs_per_model']+1):
                     # reset ext_args
                     ext_args = args_.copy()
 
                     output = f"{args.output}/{name}/{lang}/{i}/{i}.{j}"
 
-                    if 'sed-params' in grid_config and lang in grid_config['sed-params']:
-                        ext_args.extend(
-                            [
-                                "--sed-params", grid_config['sed-params'][lang]
-                            ]
-                        )
+                    for par in ['sed-params', 'vocabulary']:
+                        if par in grid_config and lang in grid_config[par]:
+                            ext_args.extend(
+                                [
+                                    "--"+par, grid_config[par][lang]
+                                ]
+                            )
 
                     # create file names from pattern
-                    train_file = file_name_from_pattern(config_dict['data']['pattern'], lang, 'train')
                     dev_file = file_name_from_pattern(config_dict['data']['pattern'], lang, 'dev')
                     test_file = file_name_from_pattern(config_dict['data']['pattern'], lang, 'test')
 
-                    train = f"{config_dict['data']['path']}/{train_file}"
                     dev = f"{config_dict['data']['path']}/{dev_file}"
                     test = f"{config_dict['data']['path']}/{test_file}"
+
+                    # for train it's only needed if --train-precomputed is not specified
+                    if not ('precomputed-train' in grid_config and lang in grid_config['precomputed-train']):
+                        train_file = file_name_from_pattern(config_dict['data']['pattern'], lang, 'train')
+                        train = f"{config_dict['data']['path']}/{train_file}"
+                        train_par = ("--train", train)
+                    else:
+                        train_par = ("--precomputed-train", grid_config['precomputed-train'][lang])
 
                     ext_args.extend(
                         [
                             "--output", output,
-                            "--train", train,
+                            *train_par,
                             "--dev", dev
                          ]
                     )

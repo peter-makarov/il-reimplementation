@@ -61,7 +61,7 @@ class Dataset(torch.utils.data.Dataset):
 
             if is_training:
                 def collate(batch: List):
-                    max_len = len(max([s.encoded_input for s in batch], key=len))-2
+                    max_len = len(max([s.encoded_input for s in batch], key=len)) - 2
                     return TrainingBatch(
                         torch.nn.utils.rnn.pad_sequence([s.encoded_input for s in batch],
                                                         batch_first=True,
@@ -89,17 +89,28 @@ class Dataset(torch.utils.data.Dataset):
 
         return torch.utils.data.DataLoader(self, **kwargs)
 
+    def to(self, device: str = 'cpu'):
+        for s in self.samples:
+            for attr in ['encoded_input', 'action_history', 'alignment_history',
+                         'optimal_actions_mask', 'valid_actions_mask']:
+                attr_val = getattr(s, attr)
+                if torch.is_tensor(attr_val):
+                    setattr(s, attr, attr_val.to(device))
+
     def persist(self, filename: str):
         with open(filename, mode="wb") as w:
             pickle.dump(self.samples, w)
         logging.info("Wrote precomputed training data to %s.", filename)
 
     @classmethod
-    def from_pickle(cls, path2pkl: str):
+    def from_pickle(cls, path2pkl: str, device: str = 'cpu'):
         logging.info("Loading precomputed training data from file: %s", path2pkl)
         with open(path2pkl, "rb") as w:
             params: List[Sample] = pickle.load(w)
-        return cls(params)
+
+        instance = cls(params)
+        instance.to(device)
+        return instance
 
 
 @dataclasses.dataclass

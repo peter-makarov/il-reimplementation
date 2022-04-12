@@ -65,12 +65,13 @@ def inverse_sigmoid_schedule(k: int):
     return lambda epoch: (1 - k / (k + np.exp(epoch / k)))
 
 
-def precompute_from_expert(s: utils.Sample, transducer_: transducer.Transducer) -> None:
+def precompute_from_expert(s: utils.Sample, transducer_: transducer.Transducer, device: str = 'cpu') -> None:
     """ Precompute the optimal policy (optimal and valid actions as well as the alignment) from the expert.
 
     Args:
         s: A data sample.
         transducer_: The transducer object holding the expert.
+        device: Device on which tensors are allocated.
 
     Returns:
         None
@@ -95,7 +96,7 @@ def precompute_from_expert(s: utils.Sample, transducer_: transducer.Transducer) 
 
     optimal_actions_mask = torch.full(
         (len(action_history) - 1, transducer_.number_actions),
-        False, dtype=torch.bool, device=args.device)
+        False, dtype=torch.bool, device=device)
     seq_pos, emb_pos = zip(*[(s - 1, a) for s in range(1, len(action_history))
                              for a in action_history[s]])
     optimal_actions_mask[seq_pos, emb_pos] = True
@@ -103,8 +104,8 @@ def precompute_from_expert(s: utils.Sample, transducer_: transducer.Transducer) 
 
     # now this is a crucial part: the last alignment index as well as the last action
     # are irrelevant and changing these lines will mess up training
-    s.alignment_history = torch.tensor(alignment_history[:-1], device=args.device)
-    s.action_history = torch.tensor(action_history[:-1], device=args.device).squeeze(dim=1)
+    s.alignment_history = torch.tensor(alignment_history[:-1], device=device)
+    s.action_history = torch.tensor(action_history[:-1], device=device).squeeze(dim=1)
 
     valid_actions_mask = torch.stack(
         # + 1 is needed to compensate for lack of end-of-seq-token
@@ -137,7 +138,7 @@ def main(args: argparse.Namespace):
         vocabulary_ = vocabulary.Vocabularies()
 
     if args.precomputed_train is not None:
-        training_data = utils.Dataset.from_pickle(args.precomputed_train)
+        training_data = utils.Dataset.from_pickle(args.precomputed_train, device=args.device)
     else:
         training_data = utils.Dataset()
         with utils.OpenNormalize(args.train, args.nfd) as f:
@@ -200,7 +201,7 @@ def main(args: argparse.Namespace):
             widgets=widgets, maxval=len(training_data.samples)
         ).start()
         for i, s in enumerate(training_data.samples):
-            precompute_from_expert(s, transducer_)
+            precompute_from_expert(s, transducer_, device=args.device)
             precompute_progress_bar.update(i)
 
         if args.save_precomputed_train:
