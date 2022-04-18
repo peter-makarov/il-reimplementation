@@ -86,6 +86,8 @@ def main(args: argparse.Namespace):
                 par_name, par_value = j
                 if isinstance(par_value, bool) and par_value:
                     parsed_args.append(f"--{par_name}")
+                elif isinstance(par_value, (list, tuple)):
+                    parsed_args.extend([f"--{par_name}", *[str(v) for v in par_value]])
                 elif par_name in ['sed-params', 'precomputed-train', 'vocabulary']:
                     continue
                 else:
