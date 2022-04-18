@@ -22,7 +22,7 @@ class Adam(torch.optim.Adam):
     @staticmethod
     def add_args(parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--lr", type=float, default=0.001)
-        parser.add_argument("--betas", type=tuple, default=(0.9, 0.999))
+        parser.add_argument("--betas", type=float, nargs=2, default=(0.9, 0.999))
         parser.add_argument("--eps", type=float, default=1e-08)
         parser.add_argument("--weight-decay", type=float, default=0)
         parser.add_argument("--amsgrad", type=bool, default=False)
@@ -44,7 +44,7 @@ class AdamW(torch.optim.AdamW):
     @staticmethod
     def add_args(parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--lr", type=float, default=0.001)
-        parser.add_argument("--betas", type=tuple, default=(0.9, 0.999))
+        parser.add_argument("--betas", type=float, nargs=2, default=(0.9, 0.999))
         parser.add_argument("--opt-eps", type=float, default=1e-08)
         parser.add_argument("--weight-decay", type=float, default=0)
         parser.add_argument("--amsgrad", type=bool, default=False)
