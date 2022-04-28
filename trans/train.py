@@ -50,7 +50,7 @@ def decode(transducer_: transducer.Transducer, data_loader: torch.utils.data.Dat
             batch.input, batch.features, batch.target
         for i, p in enumerate(output.output):
             if features is not None:
-                prediction = f"{inputs[i]}\t{p}\t{features}"
+                prediction = f"{inputs[i]}\t{p}\t{features[i]}"
             else:
                 prediction = f"{inputs[i]}\t{p}"
             predictions.append(prediction)

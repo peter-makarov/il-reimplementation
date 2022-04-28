@@ -39,7 +39,7 @@ class EvalBatch:
     input: List[str]
     target: Optional[List[str]]
     encoded_input: torch.tensor
-    features: Optional[str] = None
+    features: Optional[List[str]] = None
     encoded_features: Optional[torch.tensor] = None
 
 
@@ -104,6 +104,7 @@ class Dataset(torch.utils.data.Dataset):
                                      torch.nn.utils.rnn.pad_sequence([s.encoded_input for s in batch],
                                                                      batch_first=True,
                                                                      padding_value=pad_index),
+                                     features=[s.features for s in batch],
                                      encoded_features=batch_encode_features(batch),
                                      )
 
